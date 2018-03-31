@@ -40,13 +40,16 @@ tests_unit: compile
 
 .PHONY: tests
 tests: compile
+	redis-server --bind 127.0.0.1 --daemonize yes
 	go test $(shell glide nv) -tags=integration
+	ps aux | grep -v 'grep' | grep 'redis-server' | awk '{print $$2}' | xargs -I{} kill {}
 
 .PHONY: proto
 proto:
 	script/generate_proto
 
 .PHONY: docker
-docker: tests
+docker:
+	GOOS=linux $(MAKE) compile
 	docker build . -t quay.io/dollarshaveclub/ratelimit:`git rev-parse HEAD`
 	docker push quay.io/dollarshaveclub/ratelimit:`git rev-parse HEAD`

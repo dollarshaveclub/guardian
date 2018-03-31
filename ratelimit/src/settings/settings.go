@@ -18,10 +18,11 @@ type Settings struct {
 	RuntimePath                string `envconfig:"RUNTIME_ROOT" default:"/srv/runtime_data/current"`
 	RuntimeSubdirectory        string `envconfig:"RUNTIME_SUBDIRECTORY"`
 	LogLevel                   string `envconfig:"LOG_LEVEL" default:"WARN"`
-	RedisSocketType            string `envconfig:"REDIS_SOCKET_TYPE" default:"unix"`
-	RedisUrl                   string `envconfig:"REDIS_URL" default:"/var/run/nutcracker/ratelimit.sock"`
+	RedisSocketType            string `envconfig:"REDIS_SOCKET_TYPE" default:"tcp"`
+	RedisUrl                   string `envconfig:"REDIS_URL" default:"127.0.0.1:6379"`
 	RedisPoolSize              int    `envconfig:"REDIS_POOL_SIZE" default:"10"`
 	ExpirationJitterMaxSeconds int64  `envconfig:"EXPIRATION_JITTER_MAX_SECONDS" default:"300"`
+	ReportOnly                 bool   `envconfig:"REPORT_ONLY" default:"false"`
 }
 
 type Option func(*Settings)

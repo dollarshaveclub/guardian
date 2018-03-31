@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -54,6 +55,7 @@ type service struct {
 	cache              redis.RateLimitCache
 	stats              serviceStats
 	rlStatsScope       stats.Scope
+	reportOnly         bool
 }
 
 func (this *service) reloadConfig() {
@@ -118,14 +120,28 @@ func (this *service) shouldRateLimitWorker(
 	response := &pb.RateLimitResponse{}
 	response.Statuses = make([]*pb.RateLimitResponse_DescriptorStatus, len(request.Descriptors))
 	finalCode := pb.RateLimitResponse_OK
+	var limitedDescriptor *pb.RateLimitDescriptor
 	for i, descriptorStatus := range responseDescriptorStatuses {
 		response.Statuses[i] = descriptorStatus
 		if descriptorStatus.Code == pb.RateLimitResponse_OVER_LIMIT {
+			limitedDescriptor = request.Descriptors[i]
 			finalCode = descriptorStatus.Code
 		}
 	}
 
-	response.OverallCode = finalCode
+	if this.reportOnly {
+		if finalCode == pb.RateLimitResponse_OVER_LIMIT {
+			descriptorEntries := []string{}
+			for _, entry := range limitedDescriptor.GetEntries() {
+				descriptorEntries = append(descriptorEntries, fmt.Sprintf("%s[%s]", entry.GetKey(), entry.GetValue()))
+			}
+			logger.Warnf("REPORT ONLY - descriptor would be over limit: %v", strings.Join(descriptorEntries, ", "))
+		}
+		response.OverallCode = pb.RateLimitResponse_OK
+	} else {
+		response.OverallCode = finalCode
+	}
+
 	return response
 }
 
@@ -169,10 +185,10 @@ func (this *service) GetCurrentConfig() config.RateLimitConfig {
 }
 
 func NewService(runtime loader.IFace, cache redis.RateLimitCache,
-	configLoader config.RateLimitConfigLoader, stats stats.Scope) RateLimitServiceServer {
+	configLoader config.RateLimitConfigLoader, reportOnly bool, stats stats.Scope) RateLimitServiceServer {
 
 	newService := &service{runtime, sync.RWMutex{}, configLoader, nil, make(chan int), cache,
-		newServiceStats(stats), stats.Scope("rate_limit")}
+		newServiceStats(stats), stats.Scope("rate_limit"), reportOnly}
 	runtime.AddUpdateCallback(newService.runtimeUpdateEvent)
 
 	newService.reloadConfig()
