@@ -1,0 +1,3 @@
+FROM docker.io/envoyproxy/envoy-alpine:v1.6.0
+
+COPY dsc-envoy/config.yaml /config/config.yaml

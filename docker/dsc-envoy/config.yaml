@@ -1,0 +1,56 @@
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 8080 }
+    filter_chains:
+    - filters:
+      - name: envoy.http_connection_manager
+        config:
+          stat_prefix: ingress_http
+          use_remote_address: true
+          xff_num_trusted_hops: 2
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              rate_limits:
+              - actions:
+                - remote_address: {}
+              routes:
+              - match: { prefix: "/" }
+                route: { cluster: upstream }
+          http_filters:
+          - name: envoy.rate_limit
+            config:
+              domain: edge_proxy_per_ip
+          - name: envoy.router
+  clusters:
+  - name: upstream
+    connect_timeout: { seconds: 5 }
+    type: STRICT_DNS
+    hosts:
+    - socket_address:
+        address: 127.0.0.1
+        port_value: 80
+    lb_policy: ROUND_ROBIN
+  - name: ratelimit
+    connect_timeout: { seconds: 5 }
+    type: STRICT_DNS
+    hosts:
+    - socket_address:
+        address: ratelimit
+        port_value: 8081
+    lb_policy: ROUND_ROBIN
+    http2_protocol_options: {}
+rate_limit_service:
+  grpc_service:
+    envoy_grpc:
+      cluster_name: ratelimit
+admin:
+  access_log_path: /dev/null
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9001
