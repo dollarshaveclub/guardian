@@ -30,6 +30,17 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/google/go-cmp"
+  packages = [
+    "cmp",
+    "cmp/internal/diff",
+    "cmp/internal/function",
+    "cmp/internal/value"
+  ]
+  revision = "3af367b6b30c263d47e8895973edcca9a49cf029"
+  version = "v0.2.0"
+
+[[projects]]
   name = "github.com/lyft/protoc-gen-validate"
   packages = ["validate"]
   revision = "930a67cf7ba41b9d9436ad7a1be70a5d5ff6e1fc"
@@ -109,6 +120,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fb6628a5c4971468227eb391a827989ea07c3a82810db7540e54dc5ab5209c2b"
+  inputs-digest = "c894c4b607eb6c616c7e7e536b54d64b9a279085cc43c9c3374b80d09d4a1681"
   solver-name = "gps-cdcl"
   solver-version = 1
