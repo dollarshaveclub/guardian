@@ -7,21 +7,21 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewServer(ratelimiter RateLimitFunc) *grpc.Server {
+func NewServer(blocker RequestBlockerFunc) *grpc.Server {
 	g := grpc.NewServer()
-	s := &server{}
+	s := &server{blocker: blocker}
 	ratelimit.RegisterRateLimitServiceServer(g, s)
 
 	return g
 }
 
 type server struct {
-	ratelimiter RateLimitFunc
+	blocker RequestBlockerFunc
 }
 
 func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
 	req := RequestFromRateLimitRequest(relreq)
-	block, remaining, _ := s.ratelimiter(ctx, req) // eat errors for now until we figure out what envoy does if an error is returned
+	block, remaining, _ := s.blocker(ctx, req) // eat errors for now until we figure out what envoy does if an error is returned
 
 	resp := &ratelimit.RateLimitResponse{
 		OverallCode: ratelimit.RateLimitResponse_OK,
