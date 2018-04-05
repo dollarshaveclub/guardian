@@ -43,7 +43,7 @@ type IPRateLimiter struct {
 func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
 
 	limit := rl.store.GetLimit()
-	key := rl.SlotKey(request, time.Now(), limit)
+	key := rl.SlotKey(request, time.Now(), limit.Duration)
 
 	currCount, err := rl.store.Incr(context, key, 1, limit.Duration)
 	if err != nil {
@@ -64,7 +64,7 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 }
 
 // SlotKey generates the key for a slot determined by the request, slot time, and limit duration
-func (rl *IPRateLimiter) SlotKey(request Request, slotTime time.Time, limit Limit) string {
+func (rl *IPRateLimiter) SlotKey(request Request, slotTime time.Time, duration time.Duration) string {
 	// a) convert to seconds
 	// b) get slot time unix epoch seconds
 	// c) use integer division to bucket based on limit.Duration
@@ -73,9 +73,9 @@ func (rl *IPRateLimiter) SlotKey(request Request, slotTime time.Time, limit Limi
 	// 1522895021 -> 1522895020
 	// 1522895028 -> 1522895020
 	// 1522895030 -> 1522895030
-	secs := int64(limit.Duration / time.Second) // a
-	t := slotTime.Unix()                        // b
-	slot := (t / secs) * secs                   // c
+	secs := int64(duration / time.Second) // a
+	t := slotTime.Unix()                  // b
+	slot := (t / secs) * secs             // c
 	key := request.RemoteAddress + ":" + strconv.FormatInt(slot, 10)
 	return key
 }
