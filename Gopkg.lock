@@ -30,6 +30,15 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/gomodule/redigo"
+  packages = [
+    "internal",
+    "redis"
+  ]
+  revision = "9c11da706d9b7902c6da69c592f75637793fe121"
+  version = "v2.0.0"
+
+[[projects]]
   name = "github.com/google/go-cmp"
   packages = [
     "cmp",
@@ -45,6 +54,12 @@
   packages = ["validate"]
   revision = "930a67cf7ba41b9d9436ad7a1be70a5d5ff6e1fc"
   version = "v0.0.6"
+
+[[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
 
 [[projects]]
   branch = "master"
@@ -120,6 +135,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c894c4b607eb6c616c7e7e536b54d64b9a279085cc43c9c3374b80d09d4a1681"
+  inputs-digest = "10b1d1942f66d498e7e912e2da136b400e17653c3090ff0d8b2a5e4a14d0654c"
   solver-name = "gps-cdcl"
   solver-version = 1
