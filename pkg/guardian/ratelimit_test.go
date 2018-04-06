@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -24,6 +25,13 @@ func (fl *FakeLimitStore) Incr(context context.Context, key string, count uint, 
 	fl.count[key] += uint64(count)
 
 	return fl.count[key], nil
+}
+
+func TestIPRateLimiterReturnsErrorWithInvalidStore(t *testing.T) {
+	_, err := NewIPRateLimiter(nil)
+	if err == nil {
+		t.Errorf("error was nil when it shouldn't have been")
+	}
 }
 
 func TestLimitRateLimits(t *testing.T) {
@@ -106,6 +114,57 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	}
 	if remaining != uint32(limit.Count-1) {
 		t.Fatalf("remaining was %d when it should have been %d", remaining, uint32(limit.Count-1))
+	}
+}
+
+func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
+
+	// 3 rps
+	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second}
+
+	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
+	rl, err := NewIPRateLimiter(fstore)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	req := Request{RemoteAddress: "192.168.1.2"}
+	slot := rl.SlotKey(req, time.Now(), limit.Duration)
+	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
+
+	blocked, remaining, err := rl.Limit(context.Background(), req)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if blocked != false {
+		t.Fatalf("expected blocked: %v, received blocked: %v", false, blocked)
+	}
+	if remaining != ^uint32(0) {
+		t.Fatalf("remaining was %d when it should have been %d", remaining, ^uint32(0))
+	}
+}
+
+func TestLimitFailsOpen(t *testing.T) {
+
+	// 3 rps
+	limit := Limit{Count: 3, Duration: 1 * time.Second}
+
+	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
+	rl, err := NewIPRateLimiter(fstore)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	req := Request{RemoteAddress: "192.168.1.2"}
+
+	blocked, _, err := rl.Limit(context.Background(), req)
+	if err == nil {
+		t.Error("expected error but received nothing")
+	}
+
+	if blocked != false {
+		t.Error("failed closed when it should have failed open")
 	}
 }
 
