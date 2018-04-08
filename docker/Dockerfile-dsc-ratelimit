@@ -1,0 +1,10 @@
+FROM quay.io/dollarshaveclub/ratelimit:b5e150760c65ec553c7d94fb60b9027be8ac8f33
+
+COPY dsc-ratelimit/config.yaml /ratelimit/config/config.yaml
+
+ENV USE_STATSD=false
+ENV RUNTIME_ROOT=/
+ENV RUNTIME_SUBDIRECTORY=ratelimit
+ENV REDIS_SOCKET_TYPE=tcp
+ENV REDIS_URL=redis:6379
+ENV REPORT_ONLY=true
