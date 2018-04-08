@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // Limit describes a rate limit
 type Limit struct {
 	Count    uint64
 	Duration time.Duration
+	Enabled  bool
 }
 
 // LimitStore is a data store capable of storing, incrementing and expiring the count of a key
@@ -26,40 +28,50 @@ type LimitStore interface {
 }
 
 // NewIPRateLimiter creates a new IP rate limiter using the given store
-func NewIPRateLimiter(store LimitStore) (*IPRateLimiter, error) {
-	if store == nil {
-		return nil, fmt.Errorf("invalid store")
-	}
-
-	return &IPRateLimiter{store: store}, nil
+func NewIPRateLimiter(store LimitStore, logger logrus.FieldLogger) *IPRateLimiter {
+	return &IPRateLimiter{store: store, logger: logger}
 }
 
 // IPRateLimiter is an IP based rate limiter
 type IPRateLimiter struct {
-	store LimitStore
+	store  LimitStore
+	logger logrus.FieldLogger
 }
 
 // Limit limits a request if request exceeds rate limit
 func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
 
 	limit := rl.store.GetLimit()
+	rl.logger.Debugf("fetched limit %v", limit)
+
+	if !limit.Enabled {
+		rl.logger.Debugf("limit not enabled for request %v, allowing", request)
+		return false, ^uint32(0), nil
+	}
+
 	key := rl.SlotKey(request, time.Now(), limit.Duration)
+	rl.logger.Debugf("generated key %v for request %v", key, request)
 
 	currCount, err := rl.store.Incr(context, key, 1, limit.Duration)
 	if err != nil {
-		return false, 0, errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
+		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
+		rl.logger.WithError(err).Error("store returned error when call incr")
+		return false, 0, err
 	}
 
 	if currCount > limit.Count {
+		rl.logger.Debugf("request %v blocked", request)
 		return true, 0, nil // block request, rate limited
 	}
 
 	remaining64 := limit.Count - currCount
 	remaining32 := uint32(remaining64)
 	if uint64(remaining32) != remaining64 { // if we lose some signifcant bits, convert it to max of uint32
+		rl.logger.Errorf("overflow detected, setting to max uint32: remaining64 %v remaining32", remaining64, remaining32)
 		remaining32 = ^uint32(0)
 	}
 
+	rl.logger.Debugf("request %v allowed with %v remaining requests", request, remaining32)
 	return false, remaining32, nil
 }
 
