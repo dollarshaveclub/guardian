@@ -8,6 +8,21 @@
   version = "2.1.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/alecthomas/template"
+  packages = [
+    ".",
+    "parse"
+  ]
+  revision = "a0175ee3bccc567396460bf5acd36800cb10c49c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/alecthomas/units"
+  packages = ["."]
+  revision = "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
+
+[[projects]]
   name = "github.com/envoyproxy/go-control-plane"
   packages = [
     "envoy/api/v2/ratelimit",
@@ -159,9 +174,15 @@
   revision = "1e2570b1b19ade82d8dbb31bba4e65e9f9ef5b34"
   version = "v1.11.1"
 
+[[projects]]
+  name = "gopkg.in/alecthomas/kingpin.v2"
+  packages = ["."]
+  revision = "947dcec5ba9c011838740e680966fd7087a71d0d"
+  version = "v2.2.6"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "0fdb8631712cc2f8e58350c6540f9465cb397bdf18305fa32444c029c705c8b5"
+  inputs-digest = "bad53c3a031c2ee51b232fd12885e7c49b043fd200951e7571808e18222f40aa"
   solver-name = "gps-cdcl"
   solver-version = 1
