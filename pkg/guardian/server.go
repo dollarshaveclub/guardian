@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -9,9 +10,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewServer(blocker RequestBlockerFunc, reportOnly bool, logger logrus.FieldLogger) *grpc.Server {
+func NewServer(blocker RequestBlockerFunc, reportOnly bool, logger logrus.FieldLogger, reporter MetricReporter) *grpc.Server {
 	g := grpc.NewServer()
-	s := &server{blocker: blocker, logger: logger, reportOnly: reportOnly}
+	s := &server{blocker: blocker, reporter: reporter, logger: logger, reportOnly: reportOnly}
 	registerRateLimitServiceServer(g, s)
 
 	return g
@@ -19,13 +20,17 @@ func NewServer(blocker RequestBlockerFunc, reportOnly bool, logger logrus.FieldL
 
 type server struct {
 	logger     logrus.FieldLogger
+	reporter   MetricReporter
 	blocker    RequestBlockerFunc
 	reportOnly bool
 }
 
 func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
+	start := time.Now()
 	req := RequestFromRateLimitRequest(relreq)
+	defer func() { s.reporter.Duration(req, time.Since(start)) }()
 
+	s.reporter.Request(req)
 	s.logger.Debugf("received rate limit request %v", relreq)
 	s.logger.Debugf("converted to request %v", req)
 
@@ -38,6 +43,12 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 
 	resp := &ratelimit.RateLimitResponse{
 		OverallCode: ratelimit.RateLimitResponse_OK,
+	}
+
+	if block {
+		s.reporter.Blocked(req)
+	} else {
+		s.reporter.Allowed(req)
 	}
 
 	if block && !s.reportOnly {
@@ -54,6 +65,5 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 	}
 
 	s.logger.Debugf("sending response %v", resp)
-
 	return resp, nil
 }
