@@ -14,7 +14,7 @@ type MetricReporter interface {
 }
 
 type DataDogReporter struct {
-	client *statsd.Client
+	Client *statsd.Client
 }
 
 const requestMetricName = "request.total"
@@ -23,19 +23,19 @@ const blockedMetricName = "request.blocked"
 const durationMetricName = "request.duration"
 
 func (d *DataDogReporter) Request(request Request) error {
-	return d.client.Incr(requestMetricName, []string{}, 1)
+	return d.Client.Incr(requestMetricName, []string{}, 1)
 }
 
 func (d *DataDogReporter) Allowed(request Request) error {
-	return d.client.Incr(allowedMetricName, []string{}, 1)
+	return d.Client.Incr(allowedMetricName, []string{}, 1)
 }
 
 func (d *DataDogReporter) Blocked(request Request) error {
-	return d.client.Incr(blockedMetricName, []string{}, 1)
+	return d.Client.Incr(blockedMetricName, []string{}, 1)
 }
 
 func (d *DataDogReporter) Duration(request Request, duration time.Duration) error {
-	return d.client.Timing(durationMetricName, duration, []string{}, 1)
+	return d.Client.Timing(durationMetricName, duration, []string{}, 1)
 }
 
 type NullReporter struct{}
