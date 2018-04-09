@@ -50,11 +50,9 @@ func (rs *RedisLimitStore) Incr(context context.Context, key string, incrBy uint
 
 	rs.logger.Debugf("Sending pipeline INCRBY %v %v EXPIRE %v", key, incrBy, expireIn.Seconds())
 
-	// TODO: do we really need transaction gurantees for this?
-	conn.Send("MULTI")
 	conn.Send("INCRBY", key, incrBy)
 	conn.Send("EXPIRE", key, expireIn.Seconds())
-	r, err := conn.Do("EXEC")
+	r, err := conn.Do("")
 
 	if err != nil {
 		msg := fmt.Sprintf("error incrementing key %v with increase %d and expiration %v", key, incrBy, expireIn)
