@@ -46,6 +46,7 @@ func main() {
 			os.Exit(1)
 		}
 
+		ddStatsd.Namespace = "guardian."
 		reporter = &guardian.DataDogReporter{Client: ddStatsd}
 	}
 
