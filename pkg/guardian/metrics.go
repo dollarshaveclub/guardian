@@ -35,7 +35,7 @@ func (d *DataDogReporter) Blocked(request Request) error {
 }
 
 func (d *DataDogReporter) Duration(request Request, duration time.Duration) error {
-	return d.Client.Timing(durationMetricName, duration, []string{}, 1)
+	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{}, 1)
 }
 
 type NullReporter struct{}
