@@ -12,10 +12,10 @@ import (
 )
 
 // DefaultRedisReadTimeout is the default timeout used when reading a reply from redis
-var DefaultRedisReadTimeout = 25 * time.Millisecond
+var DefaultRedisReadTimeout = 100 * time.Millisecond
 
 // DefaultRedisWriteTimeout is the default timeout used when writing to redis
-var DefaultRedisWriteTimeout = 25 * time.Millisecond
+var DefaultRedisWriteTimeout = 100 * time.Millisecond
 
 func main() {
 
