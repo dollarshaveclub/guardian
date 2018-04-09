@@ -3,7 +3,6 @@ package main
 import (
 	"net"
 	"os"
-	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
@@ -18,6 +17,8 @@ func main() {
 	redisAddress := kingpin.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").String()
 	dogstatsdAddress := kingpin.Flag("dogstatsd-address", "host:port.").Short('d').OverrideDefaultFromEnvar("DOGSTATSD_ADDRESS").String()
 	reportOnly := kingpin.Flag("report-only", "report only, do not block.").Default("false").Short('o').OverrideDefaultFromEnvar("REPORT_ONLY").Bool()
+	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
+	limitDuration := kingpin.Flag("limit-duration", "duration to apply limit. supports time.ParseDuration format.").Short('y').Default("1s").OverrideDefaultFromEnvar("LIMIT_DURATION").Duration()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -48,14 +49,16 @@ func main() {
 		reporter = &guardian.DataDogReporter{Client: ddStatsd}
 	}
 
-	limit := guardian.Limit{Count: 10, Duration: 1 * time.Second, Enabled: true}
+	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: true}
 	redisOpts := guardian.RedisPoolOpts{Addr: *redisAddress}
-	redis := guardian.NewRedisLimitStore(limit, redisOpts, logger.WithField("context", "redis"))
 
+	logger.Infof("setting ip rate limiter to use redis store with %v", limit)
+
+	redis := guardian.NewRedisLimitStore(limit, redisOpts, logger.WithField("context", "redis"))
 	rateLimiter := guardian.NewIPRateLimiter(redis, logger.WithField("context", "ip-rate-limiter"))
-	server := guardian.NewServer(rateLimiter.Limit, *reportOnly, logger.WithField("context", "server"), reporter)
 
 	logger.Infof("starting server on %v", *address)
+	server := guardian.NewServer(rateLimiter.Limit, *reportOnly, logger.WithField("context", "server"), reporter)
 	err = server.Serve(l)
 	if err != nil {
 		logger.WithError(err).Error("error running server")

@@ -17,6 +17,10 @@ type Limit struct {
 	Enabled  bool
 }
 
+func (l Limit) String() string {
+	return fmt.Sprintf("Limit(%d per %v, enabled: %v)", l.Count, l.Duration, l.Enabled)
+}
+
 // LimitStore is a data store capable of storing, incrementing and expiring the count of a key
 type LimitStore interface {
 	// GetLimit returns the current limit settings
