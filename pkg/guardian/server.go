@@ -28,9 +28,7 @@ type server struct {
 func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
 	start := time.Now()
 	req := RequestFromRateLimitRequest(relreq)
-	defer func() { s.reporter.Duration(req, time.Since(start)) }()
 
-	s.reporter.Request(req)
 	s.logger.Debugf("received rate limit request %v", relreq)
 	s.logger.Debugf("converted to request %v", req)
 
@@ -43,12 +41,6 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 
 	resp := &ratelimit.RateLimitResponse{
 		OverallCode: ratelimit.RateLimitResponse_OK,
-	}
-
-	if block {
-		s.reporter.Blocked(req)
-	} else {
-		s.reporter.Allowed(req)
 	}
 
 	if block && !s.reportOnly {
@@ -65,5 +57,6 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 	}
 
 	s.logger.Debugf("sending response %v", resp)
+	s.reporter.Duration(req, block, time.Since(start))
 	return resp, nil
 }
