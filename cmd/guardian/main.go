@@ -3,12 +3,19 @@ package main
 import (
 	"net"
 	"os"
+	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
+
+// DefaultRedisReadTimeout is the default timeout used when reading a reply from redis
+var DefaultRedisReadTimeout = 25 * time.Millisecond
+
+// DefaultRedisWriteTimeout is the default timeout used when writing to redis
+var DefaultRedisWriteTimeout = 25 * time.Millisecond
 
 func main() {
 
@@ -55,7 +62,7 @@ func main() {
 
 	logger.Infof("setting ip rate limiter to use redis store with %v", limit)
 
-	redis := guardian.NewRedisLimitStore(limit, redisOpts, logger.WithField("context", "redis"))
+	redis := guardian.NewRedisLimitStore(limit, redisOpts, DefaultRedisReadTimeout, DefaultRedisWriteTimeout, logger.WithField("context", "redis"))
 	rateLimiter := guardian.NewIPRateLimiter(redis, logger.WithField("context", "ip-rate-limiter"))
 
 	logger.Infof("starting server on %v", *address)

@@ -10,12 +10,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewRedisLimitStore(limit Limit, opts RedisPoolOpts, logger logrus.FieldLogger) *RedisLimitStore {
+func NewRedisLimitStore(limit Limit, opts RedisPoolOpts, readTimeout time.Duration, writeTimeout time.Duration, logger logrus.FieldLogger) *RedisLimitStore {
 	pool := &redis.Pool{
 		MaxIdle:   opts.MaxIdleConns,
 		MaxActive: opts.MaxActiveConns,
 		Wait:      opts.Wait,
-		Dial:      func() (redis.Conn, error) { return redis.Dial("tcp", opts.Addr) },
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial("tcp", opts.Addr, redis.DialReadTimeout(readTimeout), redis.DialWriteTimeout(writeTimeout))
+		},
 	}
 
 	return &RedisLimitStore{limit: limit, pool: pool, logger: logger}
