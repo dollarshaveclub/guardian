@@ -23,19 +23,19 @@ const blockedMetricName = "request.blocked"
 const durationMetricName = "request.duration"
 
 func (d *DataDogReporter) Request(request Request) error {
-	return d.Client.Incr(requestMetricName, []string{}, 1)
+	return d.Client.Incr(requestMetricName, []string{request.Authority}, 1)
 }
 
 func (d *DataDogReporter) Allowed(request Request) error {
-	return d.Client.Incr(allowedMetricName, []string{}, 1)
+	return d.Client.Incr(allowedMetricName, []string{request.Authority}, 1)
 }
 
 func (d *DataDogReporter) Blocked(request Request) error {
-	return d.Client.Incr(blockedMetricName, []string{}, 1)
+	return d.Client.Incr(blockedMetricName, []string{request.Authority}, 1)
 }
 
 func (d *DataDogReporter) Duration(request Request, duration time.Duration) error {
-	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{}, 1)
+	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{request.Authority}, 1)
 }
 
 type NullReporter struct{}
