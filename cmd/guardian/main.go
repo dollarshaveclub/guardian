@@ -11,6 +11,9 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+// DefaultRedisConnectTimeout is the default timeout used when connecting to redis
+var DefaultRedisConnectTimeout = 100 * time.Millisecond
+
 // DefaultRedisReadTimeout is the default timeout used when reading a reply from redis
 var DefaultRedisReadTimeout = 100 * time.Millisecond
 
@@ -62,7 +65,7 @@ func main() {
 
 	logger.Infof("setting ip rate limiter to use redis store with %v", limit)
 
-	redis := guardian.NewRedisLimitStore(limit, redisOpts, DefaultRedisReadTimeout, DefaultRedisWriteTimeout, logger.WithField("context", "redis"))
+	redis := guardian.NewRedisLimitStore(limit, redisOpts, DefaultRedisConnectTimeout, DefaultRedisReadTimeout, DefaultRedisWriteTimeout, logger.WithField("context", "redis"))
 	rateLimiter := guardian.NewIPRateLimiter(redis, logger.WithField("context", "ip-rate-limiter"))
 
 	logger.Infof("starting server on %v", *address)
