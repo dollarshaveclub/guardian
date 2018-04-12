@@ -30,6 +30,7 @@ func main() {
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
 	limitDuration := kingpin.Flag("limit-duration", "duration to apply limit. supports time.ParseDuration format.").Short('y').Default("1s").OverrideDefaultFromEnvar("LIMIT_DURATION").Duration()
 	limitEnabled := kingpin.Flag("limit-enabled", "rate limit enabled").Short('e').Default("true").OverrideDefaultFromEnvar("LIMIT_ENBALED").Bool()
+	ingressClass := kingpin.Flag("ingress-class", "rate limit enabled").Short('c').Default("default").OverrideDefaultFromEnvar("INGRESS_CLASS").String()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -58,7 +59,7 @@ func main() {
 		}
 
 		ddStatsd.Namespace = "guardian."
-		reporter = &guardian.DataDogReporter{Client: ddStatsd}
+		reporter = &guardian.DataDogReporter{Client: ddStatsd, IngressClass: *ingressClass}
 	}
 
 	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}

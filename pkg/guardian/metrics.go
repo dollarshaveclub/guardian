@@ -12,17 +12,20 @@ type MetricReporter interface {
 }
 
 type DataDogReporter struct {
-	Client *statsd.Client
+	Client       *statsd.Client
+	IngressClass string
 }
 
 const durationMetricName = "request.duration"
 const blockedKey = "blocked"
 const authorityKey = "authority"
+const ingressClassKey = "ingress_class"
 
 func (d *DataDogReporter) Duration(request Request, blocked bool, duration time.Duration) error {
-	authorityTag := fmt.Sprintf("%v: %v", authorityKey, request.Authority)
-	blockedTag := fmt.Sprintf("%v: %v", blockedKey, blocked)
-	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{authorityTag, blockedTag}, 1)
+	authorityTag := fmt.Sprintf("%v:%v", authorityKey, request.Authority)
+	blockedTag := fmt.Sprintf("%v:%v", blockedKey, blocked)
+	ingressClassTag := fmt.Sprintf("%v:%v", ingressClassKey, d.IngressClass)
+	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{authorityTag, blockedTag, ingressClassTag}, 1)
 }
 
 type NullReporter struct{}
