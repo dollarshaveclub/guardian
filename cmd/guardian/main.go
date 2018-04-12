@@ -29,6 +29,7 @@ func main() {
 	reportOnly := kingpin.Flag("report-only", "report only, do not block.").Default("false").Short('o').OverrideDefaultFromEnvar("REPORT_ONLY").Bool()
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
 	limitDuration := kingpin.Flag("limit-duration", "duration to apply limit. supports time.ParseDuration format.").Short('y').Default("1s").OverrideDefaultFromEnvar("LIMIT_DURATION").Duration()
+	limitEnabled := kingpin.Flag("limit-enabled", "rate limit enabled").Short('e').Default("true").OverrideDefaultFromEnvar("LIMIT_ENBALED").Bool()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -60,10 +61,10 @@ func main() {
 		reporter = &guardian.DataDogReporter{Client: ddStatsd}
 	}
 
-	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: true}
+	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
 	redisOpts := guardian.RedisPoolOpts{Addr: *redisAddress}
 
-	logger.Infof("setting ip rate limiter to use redis store with %v", limit)
+	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
 
 	redis := guardian.NewRedisLimitStore(limit, redisOpts, DefaultRedisConnectTimeout, DefaultRedisReadTimeout, DefaultRedisWriteTimeout, logger.WithField("context", "redis"))
 	rateLimiter := guardian.NewIPRateLimiter(redis, logger.WithField("context", "ip-rate-limiter"))
