@@ -32,6 +32,6 @@ func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccured b
 
 type NullReporter struct{}
 
-func (n NullReporter) Duration(request Request, blocked bool, duration time.Duration) error {
+func (n NullReporter) Duration(request Request, blocked bool, errorOccured bool, duration time.Duration) error {
 	return nil
 }
