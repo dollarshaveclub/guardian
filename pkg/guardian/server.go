@@ -57,6 +57,6 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 	}
 
 	s.logger.Debugf("sending response %v", resp)
-	s.reporter.Duration(req, block, time.Since(start))
+	s.reporter.Duration(req, block, err != nil, time.Since(start))
 	return resp, nil
 }
