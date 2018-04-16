@@ -25,6 +25,8 @@ func main() {
 	logLevel := kingpin.Flag("log-level", "log level.").Short('l').Default("warn").OverrideDefaultFromEnvar("LOG_LEVEL").String()
 	address := kingpin.Flag("address", "host:port.").Short('a').Default("0.0.0.0:3000").OverrideDefaultFromEnvar("ADDRESS").String()
 	redisAddress := kingpin.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").String()
+	redisMaxIdle := kingpin.Flag("redis-max-idle-conns", "max idle redis connections").Short('i').Default("20").OverrideDefaultFromEnvar("REDIS_MAX_IDLE_CONNS").Int()
+	redisMaxActive := kingpin.Flag("redis-max-active-conns", "max active redis connections").Short('m').Default("20").OverrideDefaultFromEnvar("REDIS_MAX_ACTIVE_CONNS").Int()
 	dogstatsdAddress := kingpin.Flag("dogstatsd-address", "host:port.").Short('d').OverrideDefaultFromEnvar("DOGSTATSD_ADDRESS").String()
 	reportOnly := kingpin.Flag("report-only", "report only, do not block.").Default("false").Short('o').OverrideDefaultFromEnvar("REPORT_ONLY").Bool()
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
@@ -52,7 +54,8 @@ func main() {
 	if len(*dogstatsdAddress) == 0 {
 		reporter = guardian.NullReporter{}
 	} else {
-		ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 100)
+		//ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 100)
+		ddStatsd, err := statsd.New(*dogstatsdAddress)
 		if err != nil {
 			logger.WithError(err).Errorf("could create dogstatsd client with address %s", *dogstatsdAddress)
 			os.Exit(1)
@@ -63,7 +66,7 @@ func main() {
 	}
 
 	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	redisOpts := guardian.RedisPoolOpts{Addr: *redisAddress}
+	redisOpts := guardian.RedisPoolOpts{Addr: *redisAddress, MaxActiveConns: *redisMaxActive, MaxIdleConns: *redisMaxIdle, Wait: true}
 
 	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
 
