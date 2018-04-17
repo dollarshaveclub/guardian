@@ -32,7 +32,7 @@ func (rs *RedisLimitStore) GetLimit() Limit {
 func (rs *RedisLimitStore) Incr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
 	key = NamespacedKey(limitStoreNamespace, key)
 
-	rs.logger.Debugf("Sending pipeline INCRBY %v %v EXPIRE %v", key, incrBy, expireIn.Seconds())
+	rs.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())
 
 	pipe := rs.redis.Pipeline()
 	incr := pipe.IncrBy(key, int64(incrBy))

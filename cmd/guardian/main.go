@@ -3,6 +3,8 @@ package main
 import (
 	"net"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
@@ -44,8 +46,8 @@ func main() {
 	if len(*dogstatsdAddress) == 0 {
 		reporter = guardian.NullReporter{}
 	} else {
-		//ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 100)
-		ddStatsd, err := statsd.New(*dogstatsdAddress)
+		ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 100)
+
 		if err != nil {
 			logger.WithError(err).Errorf("could create dogstatsd client with address %s", *dogstatsdAddress)
 			os.Exit(1)
@@ -55,7 +57,7 @@ func main() {
 		reporter = &guardian.DataDogReporter{Client: ddStatsd, IngressClass: *ingressClass}
 	}
 
-	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
+	wg := sync.WaitGroup{}
 	redisOpts := &redis.Options{
 		Addr:         *redisAddress,
 		PoolSize:     *redisPoolSize,
@@ -65,16 +67,42 @@ func main() {
 	}
 	redis := redis.NewClient(redisOpts)
 
-	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
+	redisWhitelistStore := guardian.NewRedisIPWhitelistStore(redis, logger)
 
+	logger.Infof("starting cache update for whitelist store")
+	stop := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		redisWhitelistStore.RunCacheUpdate(30*time.Second, stop)
+	}()
+
+	logger.Infof("setting whitelister to use redis store at %v", *redisAddress)
+	whitelister := guardian.NewIPWhitelister(redisWhitelistStore, logger)
+
+	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
 	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "redis"))
+	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
 	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
 
+	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
+	condRatelimitFunc := guardian.CondStopOnBlock(rateLimiter.Limit)
+	condFuncChain := guardian.CondChain(condWhitelistFunc, condRatelimitFunc)
+
 	logger.Infof("starting server on %v", *address)
-	server := guardian.NewServer(rateLimiter.Limit, *reportOnly, logger.WithField("context", "server"), reporter)
+	server := guardian.NewServer(condFuncChain, *reportOnly, logger.WithField("context", "server"), reporter)
 	err = server.Serve(l)
 	if err != nil {
 		logger.WithError(err).Error("error running server")
+	}
+
+	logger.Debug("stopping server")
+
+	close(stop)
+	wg.Wait()
+
+	logger.Debug("goodbye")
+	if err != nil {
 		os.Exit(1)
 	}
 }
