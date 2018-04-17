@@ -32,6 +32,21 @@
   version = "v0.1"
 
 [[projects]]
+  name = "github.com/go-redis/redis"
+  packages = [
+    ".",
+    "internal",
+    "internal/consistenthash",
+    "internal/hashtag",
+    "internal/pool",
+    "internal/proto",
+    "internal/singleflight",
+    "internal/util"
+  ]
+  revision = "877867d2845fbaf86798befe410b6ceb6f5c29a3"
+  version = "v6.10.2"
+
+[[projects]]
   name = "github.com/gogo/protobuf"
   packages = ["proto"]
   revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
@@ -49,15 +64,6 @@
   ]
   revision = "925541529c1fa6821df4e44ce2723319eb2be768"
   version = "v1.0.0"
-
-[[projects]]
-  name = "github.com/gomodule/redigo"
-  packages = [
-    "internal",
-    "redis"
-  ]
-  revision = "9c11da706d9b7902c6da69c592f75637793fe121"
-  version = "v2.0.0"
 
 [[projects]]
   name = "github.com/google/go-cmp"
@@ -183,6 +189,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "bad53c3a031c2ee51b232fd12885e7c49b043fd200951e7571808e18222f40aa"
+  inputs-digest = "36698bb46921c3ec065f5a2f57f5bd1f1571a3753041b5fbf36bbf5fa384057d"
   solver-name = "gps-cdcl"
   solver-version = 1

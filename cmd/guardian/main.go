@@ -3,30 +3,20 @@ package main
 import (
 	"net"
 	"os"
-	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
+	"github.com/go-redis/redis"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
-
-// DefaultRedisConnectTimeout is the default timeout used when connecting to redis
-var DefaultRedisConnectTimeout = 100 * time.Millisecond
-
-// DefaultRedisReadTimeout is the default timeout used when reading a reply from redis
-var DefaultRedisReadTimeout = 100 * time.Millisecond
-
-// DefaultRedisWriteTimeout is the default timeout used when writing to redis
-var DefaultRedisWriteTimeout = 100 * time.Millisecond
 
 func main() {
 
 	logLevel := kingpin.Flag("log-level", "log level.").Short('l').Default("warn").OverrideDefaultFromEnvar("LOG_LEVEL").String()
 	address := kingpin.Flag("address", "host:port.").Short('a').Default("0.0.0.0:3000").OverrideDefaultFromEnvar("ADDRESS").String()
 	redisAddress := kingpin.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").String()
-	redisMaxIdle := kingpin.Flag("redis-max-idle-conns", "max idle redis connections").Short('i').Default("20").OverrideDefaultFromEnvar("REDIS_MAX_IDLE_CONNS").Int()
-	redisMaxActive := kingpin.Flag("redis-max-active-conns", "max active redis connections").Short('m').Default("20").OverrideDefaultFromEnvar("REDIS_MAX_ACTIVE_CONNS").Int()
+	redisPoolSize := kingpin.Flag("redis-pool-size", "redis connection pool size").Short('p').Default("20").OverrideDefaultFromEnvar("REDIS_POOL_SIZE").Int()
 	dogstatsdAddress := kingpin.Flag("dogstatsd-address", "host:port.").Short('d').OverrideDefaultFromEnvar("DOGSTATSD_ADDRESS").String()
 	reportOnly := kingpin.Flag("report-only", "report only, do not block.").Default("false").Short('o').OverrideDefaultFromEnvar("REPORT_ONLY").Bool()
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
@@ -66,12 +56,19 @@ func main() {
 	}
 
 	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	redisOpts := guardian.RedisPoolOpts{Addr: *redisAddress, MaxActiveConns: *redisMaxActive, MaxIdleConns: *redisMaxIdle, Wait: true}
+	redisOpts := &redis.Options{
+		Addr:         *redisAddress,
+		PoolSize:     *redisPoolSize,
+		DialTimeout:  guardian.DefaultRedisDialTimeout,
+		ReadTimeout:  guardian.DefaultRedisReadTimeout,
+		WriteTimeout: guardian.DefaultRedisWriteTimeout,
+	}
+	redis := redis.NewClient(redisOpts)
 
 	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
 
-	redis := guardian.NewRedisLimitStore(limit, redisOpts, DefaultRedisConnectTimeout, DefaultRedisReadTimeout, DefaultRedisWriteTimeout, logger.WithField("context", "redis"))
-	rateLimiter := guardian.NewIPRateLimiter(redis, logger.WithField("context", "ip-rate-limiter"))
+	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "redis"))
+	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(rateLimiter.Limit, *reportOnly, logger.WithField("context", "server"), reporter)
