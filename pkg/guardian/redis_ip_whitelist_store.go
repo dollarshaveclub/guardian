@@ -30,7 +30,7 @@ func (rs *RedisIPWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 
-	return rs.cache, nil
+	return append([]net.IPNet{}, rs.cache...), nil
 }
 
 func (rs *RedisIPWhitelistStore) AddCidrs(cidrs []net.IPNet) error {
