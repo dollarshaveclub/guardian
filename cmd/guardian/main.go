@@ -3,13 +3,16 @@ package main
 import (
 	"net"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/go-redis/redis"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -46,7 +49,7 @@ func main() {
 	if len(*dogstatsdAddress) == 0 {
 		reporter = guardian.NullReporter{}
 	} else {
-		ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 100)
+		ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 1000)
 
 		if err != nil {
 			logger.WithError(err).Errorf("could create dogstatsd client with address %s", *dogstatsdAddress)
@@ -65,9 +68,10 @@ func main() {
 		ReadTimeout:  guardian.DefaultRedisReadTimeout,
 		WriteTimeout: guardian.DefaultRedisWriteTimeout,
 	}
+	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisWhitelistStore := guardian.NewRedisIPWhitelistStore(redis, logger)
+	redisWhitelistStore := guardian.NewRedisIPWhitelistStore(redis, logger.WithField("context", "ip-whitelister-redis"))
 
 	logger.Infof("starting cache update for whitelist store")
 	stop := make(chan struct{})
@@ -77,12 +81,10 @@ func main() {
 		redisWhitelistStore.RunCacheUpdate(30*time.Second, stop)
 	}()
 
-	logger.Infof("setting whitelister to use redis store at %v", *redisAddress)
-	whitelister := guardian.NewIPWhitelister(redisWhitelistStore, logger)
+	whitelister := guardian.NewIPWhitelister(redisWhitelistStore, logger.WithField("context", "ip-whitelister"))
 
 	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "redis"))
-	logger.Infof("setting ip rate limiter to use redis store at %v with %v", *redisAddress, limit)
+	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "ip-rate-limiter-redis"))
 	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
@@ -91,18 +93,39 @@ func main() {
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(condFuncChain, *reportOnly, logger.WithField("context", "server"), reporter)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		waitGracefulStop(server, stop)
+	}()
+
 	err = server.Serve(l)
 	if err != nil {
 		logger.WithError(err).Error("error running server")
 	}
 
-	logger.Debug("stopping server")
+	logger.Info("stopping server")
 
+	redis.Close()
 	close(stop)
+
 	wg.Wait()
 
-	logger.Debug("goodbye")
+	logger.Info("goodbye")
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func waitGracefulStop(server *grpc.Server, stop <-chan struct{}) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case <-stop:
+	case <-sigCh:
+	}
+
+	server.GracefulStop()
 }
