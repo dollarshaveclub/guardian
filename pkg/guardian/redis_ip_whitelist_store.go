@@ -15,22 +15,27 @@ const ipWhitelistKey = "whitelist"
 
 // NewRedisIPWhitelistStore creates a new RedisIPWhitelistStore
 func NewRedisIPWhitelistStore(redis *redis.Client, logger logrus.FieldLogger) *RedisIPWhitelistStore {
-	return &RedisIPWhitelistStore{redis: redis, logger: logger, cache: []net.IPNet{}}
+	return &RedisIPWhitelistStore{redis: redis, logger: logger, cache: lockingCache{c: []net.IPNet{}}}
 }
 
 // RedisIPWhitelistStore is a IPWhitelistStore that uses Redis for persistance
 type RedisIPWhitelistStore struct {
 	redis  *redis.Client
-	cache  []net.IPNet
+	cache  lockingCache
 	mu     sync.RWMutex
 	logger logrus.FieldLogger
 }
 
-func (rs *RedisIPWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
-	rs.mu.RLock()
-	defer rs.mu.RUnlock()
+type lockingCache struct {
+	sync.RWMutex
+	c []net.IPNet
+}
 
-	return append([]net.IPNet{}, rs.cache...), nil
+func (rs *RedisIPWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
+	rs.cache.RLock()
+	defer rs.cache.RUnlock()
+
+	return append([]net.IPNet{}, rs.cache.c...), nil
 }
 
 func (rs *RedisIPWhitelistStore) AddCidrs(cidrs []net.IPNet) error {
@@ -111,9 +116,9 @@ func (rs *RedisIPWhitelistStore) UpdateCachedWhitelist() error {
 	}
 	rs.logger.Debugf("Fetched whitelist with length %d", len(whitelist))
 
-	rs.mu.Lock()
-	rs.cache = whitelist
-	rs.mu.Unlock()
+	rs.cache.Lock()
+	rs.cache.c = whitelist
+	rs.cache.Unlock()
 	rs.logger.Debug("Updated whitelist")
 
 	return nil
