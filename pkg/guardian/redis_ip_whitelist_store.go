@@ -26,14 +26,14 @@ type RedisIPWhitelistStore struct {
 	logger logrus.FieldLogger
 }
 
-func (rs RedisIPWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
+func (rs *RedisIPWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 
 	return rs.cache, nil
 }
 
-func (rs RedisIPWhitelistStore) AddCidrs(cidrs []net.IPNet) error {
+func (rs *RedisIPWhitelistStore) AddCidrs(cidrs []net.IPNet) error {
 	key := NamespacedKey(ipWhitelistStoreNamespace, ipWhitelistKey)
 	for _, cidr := range cidrs {
 		field := cidr.String()
@@ -48,7 +48,7 @@ func (rs RedisIPWhitelistStore) AddCidrs(cidrs []net.IPNet) error {
 	return nil
 }
 
-func (rs RedisIPWhitelistStore) RemoveCidrs(cidrs []net.IPNet) error {
+func (rs *RedisIPWhitelistStore) RemoveCidrs(cidrs []net.IPNet) error {
 	key := NamespacedKey(ipWhitelistStoreNamespace, ipWhitelistKey)
 	for _, cidr := range cidrs {
 		field := cidr.String()
@@ -63,7 +63,7 @@ func (rs RedisIPWhitelistStore) RemoveCidrs(cidrs []net.IPNet) error {
 	return nil
 }
 
-func (rs RedisIPWhitelistStore) FetchWhitelist() ([]net.IPNet, error) {
+func (rs *RedisIPWhitelistStore) FetchWhitelist() ([]net.IPNet, error) {
 	key := NamespacedKey(ipWhitelistStoreNamespace, ipWhitelistKey)
 
 	rs.logger.Debugf("Sending HKEYS for key %v", key)
@@ -88,7 +88,7 @@ func (rs RedisIPWhitelistStore) FetchWhitelist() ([]net.IPNet, error) {
 	return whitelist, nil
 }
 
-func (rs RedisIPWhitelistStore) RunCacheUpdate(updateInterval time.Duration, stop <-chan struct{}) {
+func (rs *RedisIPWhitelistStore) RunCacheUpdate(updateInterval time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(updateInterval)
 	for {
 		select {
@@ -101,7 +101,7 @@ func (rs RedisIPWhitelistStore) RunCacheUpdate(updateInterval time.Duration, sto
 	}
 }
 
-func (rs RedisIPWhitelistStore) UpdateCachedWhitelist() error {
+func (rs *RedisIPWhitelistStore) UpdateCachedWhitelist() error {
 	rs.logger.Debug("Updating whitelist")
 	rs.logger.Debug("Fetching whitelist")
 	whitelist, err := rs.FetchWhitelist()

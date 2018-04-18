@@ -40,21 +40,29 @@ type IPWhitelister struct {
 }
 
 func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
+	w.logger.Debugf("checking whitelist for request %#v", req)
 	ip := net.ParseIP(req.RemoteAddress)
+	w.logger.Debugf("parsed IP from request %#v", req)
 	if ip == nil {
 		return false, fmt.Errorf("invalid remote address -- not IP")
 	}
 
+	w.logger.Debug("Getting whitelist")
 	whitelist, err := w.store.GetWhitelist()
+	w.logger.Debugf("Got whitelist with length %d", len(whitelist))
+
 	if err != nil {
 		return false, errors.Wrap(err, "error fetching whitelist")
 	}
 
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {
+			w.logger.Debugf("Found %v in cidr %v of whitelist", ip, cidr.String())
 			return true, nil
 		}
+		w.logger.Debugf("CIDR %v does not contain %v of whitelist", cidr.String(), ip)
 	}
 
+	w.logger.Debugf("%v NOT FOUND in whitelist", ip)
 	return false, nil
 }
