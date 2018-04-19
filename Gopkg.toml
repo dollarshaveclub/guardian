@@ -40,3 +40,23 @@
 [[constraint]]
   name = "github.com/google/go-cmp"
   version = "0.2.0"
+
+[[constraint]]
+  name = "github.com/pkg/errors"
+  version = "0.8.0"
+
+[[constraint]]
+  name = "github.com/sirupsen/logrus"
+  version = "1.0.5"
+
+[[constraint]]
+  name = "github.com/DataDog/datadog-go"
+  version = "2.1.0"
+
+[[constraint]]
+  name = "gopkg.in/alecthomas/kingpin.v2"
+  version = "2.2.6"
+
+[[constraint]]
+  name = "github.com/go-redis/redis"
+  version = "6.10.2"
