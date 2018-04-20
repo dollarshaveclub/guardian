@@ -12,8 +12,8 @@ type MetricReporter interface {
 }
 
 type DataDogReporter struct {
-	Client       *statsd.Client
-	IngressClass string
+	Client      *statsd.Client
+	DefaultTags []string
 }
 
 const durationMetricName = "request.duration"
@@ -26,8 +26,8 @@ func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccured b
 	authorityTag := fmt.Sprintf("%v:%v", authorityKey, request.Authority)
 	blockedTag := fmt.Sprintf("%v:%v", blockedKey, blocked)
 	errorTag := fmt.Sprintf("%v:%v", errorKey, errorOccured)
-	ingressClassTag := fmt.Sprintf("%v:%v", ingressClassKey, d.IngressClass)
-	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), []string{authorityTag, blockedTag, errorTag, ingressClassTag}, 1)
+	tags := append([]string{authorityTag, blockedTag, errorTag}, d.DefaultTags...)
+	return d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), tags, 1)
 }
 
 type NullReporter struct{}
