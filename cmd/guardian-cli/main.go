@@ -23,7 +23,7 @@ func main() {
 	removeWhitelistCmd := app.Command("remove-whitelist", "Remove CIDRs from the IP Whitelist")
 	removeCidrStrings := removeWhitelistCmd.Arg("cidr", "CIDR").Required().Strings()
 
-	listWhitelistCmd := app.Command("list-whitelist", "List whitelisted CIDRs")
+	getWhitelistCmd := app.Command("get-whitelist", "Get whitelisted CIDRs")
 
 	setLimitCmd := app.Command("set-limit", "Sets the IP rate limit")
 	limitCount := setLimitCmd.Arg("count", "limit count").Required().Uint64()
@@ -63,8 +63,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error removing CIDRS: %v\n", err)
 			os.Exit(1)
 		}
-	case listWhitelistCmd.FullCommand():
-		whitelist, err := listWhitelist(redisConfStore, logger)
+	case getWhitelistCmd.FullCommand():
+		whitelist, err := getWhitelist(redisConfStore, logger)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error listing CIDRS: %v\n", err)
 			os.Exit(1)
@@ -140,7 +140,7 @@ func removeWhitelist(store *guardian.RedisConfStore, cidrStrings []string, logge
 	return nil
 }
 
-func listWhitelist(store *guardian.RedisConfStore, logger logrus.FieldLogger) ([]net.IPNet, error) {
+func getWhitelist(store *guardian.RedisConfStore, logger logrus.FieldLogger) ([]net.IPNet, error) {
 	logger.Debugf("Fetching CIDRs from Redis")
 	whitelist, err := store.FetchWhitelist()
 	if err != nil {

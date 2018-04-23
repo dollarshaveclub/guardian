@@ -36,15 +36,16 @@ type Counter interface {
 }
 
 // NewIPRateLimiter creates a new IP rate limiter
-func NewIPRateLimiter(conf LimitProvider, counter Counter, logger logrus.FieldLogger) *IPRateLimiter {
-	return &IPRateLimiter{conf: conf, counter: counter, logger: logger}
+func NewIPRateLimiter(conf LimitProvider, counter Counter, logger logrus.FieldLogger, reporter MetricReporter) *IPRateLimiter {
+	return &IPRateLimiter{conf: conf, counter: counter, logger: logger, reporter: reporter}
 }
 
 // IPRateLimiter is an IP based rate limiter
 type IPRateLimiter struct {
-	conf    LimitProvider
-	counter Counter
-	logger  logrus.FieldLogger
+	conf     LimitProvider
+	counter  Counter
+	logger   logrus.FieldLogger
+	reporter MetricReporter
 }
 
 // Limit limits a request if request exceeds rate limit
@@ -52,6 +53,7 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 
 	limit := rl.conf.GetLimit()
 	rl.logger.Debugf("fetched limit %v", limit)
+	rl.reporter.CurrentLimit(limit)
 
 	if !limit.Enabled {
 		rl.logger.Debugf("limit not enabled for request %v, allowing", request)

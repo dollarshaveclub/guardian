@@ -30,16 +30,17 @@ type WhitelistProvider interface {
 	GetWhitelist() []net.IPNet
 }
 
-func NewIPWhitelister(provider WhitelistProvider, logger logrus.FieldLogger) *IPWhitelister {
-	return &IPWhitelister{provider: provider, logger: logger}
+func NewIPWhitelister(provider WhitelistProvider, logger logrus.FieldLogger, reporter MetricReporter) *IPWhitelister {
+	return &IPWhitelister{provider: provider, logger: logger, reporter: reporter}
 }
 
 type IPWhitelister struct {
 	provider WhitelistProvider
 	logger   logrus.FieldLogger
+	reporter MetricReporter
 }
 
-func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
+func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
 	w.logger.Debugf("checking whitelist for request %#v", req)
 	ip := net.ParseIP(req.RemoteAddress)
 	w.logger.Debugf("parsed IP from request %#v", req)
@@ -50,6 +51,7 @@ func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool
 	w.logger.Debug("Getting whitelist")
 	whitelist := w.provider.GetWhitelist()
 	w.logger.Debugf("Got whitelist with length %d", len(whitelist))
+	w.reporter.CurrentWhitelist(whitelist)
 
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {

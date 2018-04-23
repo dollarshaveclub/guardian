@@ -84,10 +84,10 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"))
+	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 
 	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"))
-	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"))
+	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), reporter)
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
 	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
