@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type FakeLimitStore struct {
@@ -27,23 +29,13 @@ func (fl *FakeLimitStore) Incr(context context.Context, key string, count uint, 
 	return fl.count[key], nil
 }
 
-func TestIPRateLimiterReturnsErrorWithInvalidStore(t *testing.T) {
-	_, err := NewIPRateLimiter(nil)
-	if err == nil {
-		t.Errorf("error was nil when it shouldn't have been")
-	}
-}
-
 func TestLimitRateLimits(t *testing.T) {
 
 	// 3 rps
-	limit := Limit{Count: 3, Duration: 1 * time.Second}
+	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl, err := NewIPRateLimiter(fstore)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	rl := NewIPRateLimiter(fstore, NullLogger)
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -69,16 +61,41 @@ func TestLimitRateLimits(t *testing.T) {
 	}
 }
 
+func TestDisableLimitDoesNotRateLimit(t *testing.T) {
+
+	limit := Limit{Count: 1, Duration: 1 * time.Second, Enabled: false}
+
+	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
+	rl := NewIPRateLimiter(fstore, NullLogger)
+
+	req := Request{RemoteAddress: "192.168.1.2"}
+	sentCount := 10
+
+	for i := 0; i < sentCount; i++ {
+		blocked, remaining, err := rl.Limit(context.Background(), req)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		expectedBlocked := false
+		if blocked != expectedBlocked {
+			t.Fatalf("expected blocked: %v, received blocked: %v", expectedBlocked, blocked)
+		}
+
+		expectedRemaining := RequestsRemainingMax
+		if remaining != uint32(expectedRemaining) {
+			t.Fatalf("remaining was %d when it should have been %d", remaining, expectedRemaining)
+		}
+	}
+}
+
 func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 
 	// 3 rps
-	limit := Limit{Count: 3, Duration: 1 * time.Second}
+	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl, err := NewIPRateLimiter(fstore)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	rl := NewIPRateLimiter(fstore, NullLogger)
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -120,13 +137,10 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 
 	// 3 rps
-	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second}
+	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl, err := NewIPRateLimiter(fstore)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	rl := NewIPRateLimiter(fstore, NullLogger)
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	slot := rl.SlotKey(req, time.Now(), limit.Duration)
@@ -148,13 +162,10 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 func TestLimitFailsOpen(t *testing.T) {
 
 	// 3 rps
-	limit := Limit{Count: 3, Duration: 1 * time.Second}
+	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
-	rl, err := NewIPRateLimiter(fstore)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	rl := NewIPRateLimiter(fstore, NullLogger)
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
@@ -169,10 +180,7 @@ func TestLimitFailsOpen(t *testing.T) {
 }
 
 func TestSlotKeyGeneration(t *testing.T) {
-	rl, err := NewIPRateLimiter(&FakeLimitStore{})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	rl := NewIPRateLimiter(&FakeLimitStore{}, logrus.StandardLogger())
 
 	referenceRequest := Request{RemoteAddress: "192.168.1.2"}
 	referenceTime := time.Unix(1522969710, 0)
