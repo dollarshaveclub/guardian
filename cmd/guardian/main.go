@@ -68,31 +68,33 @@ func main() {
 		ReadTimeout:  guardian.DefaultRedisReadTimeout,
 		WriteTimeout: guardian.DefaultRedisWriteTimeout,
 	}
+
+	defaultLimit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
+	logger.Infof("parsed default limit of %v", defaultLimit)
+
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisWhitelistStore := guardian.NewRedisIPWhitelistStore(redis, logger.WithField("context", "ip-whitelister-redis"))
-
-	logger.Infof("starting cache update for whitelist store")
+	redisConfStore := guardian.NewRedisConfStore(redis, defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	logger.Infof("starting cache update for conf store")
 	stop := make(chan struct{})
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		redisWhitelistStore.RunCacheUpdate(30*time.Second, stop)
+		redisConfStore.RunSync(30*time.Second, stop)
 	}()
 
-	whitelister := guardian.NewIPWhitelister(redisWhitelistStore, logger.WithField("context", "ip-whitelister"))
+	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"))
 
-	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "ip-rate-limiter-redis"))
-	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
+	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"))
+	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"))
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
 	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
 	condFuncChain := guardian.CondChain(condWhitelistFunc, condRatelimitFunc)
 
 	logger.Infof("starting server on %v", *address)
-	server := guardian.NewServer(condFuncChain, *reportOnly, logger.WithField("context", "server"), reporter)
+	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
 
 	wg.Add(1)
 	go func() {

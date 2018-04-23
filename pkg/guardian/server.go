@@ -10,19 +10,23 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewServer(blocker RequestBlockerFunc, reportOnly bool, logger logrus.FieldLogger, reporter MetricReporter) *grpc.Server {
+type ReportOnlyProvider interface {
+	GetReportOnly() bool
+}
+
+func NewServer(blocker RequestBlockerFunc, reportOnlyProvider ReportOnlyProvider, logger logrus.FieldLogger, reporter MetricReporter) *grpc.Server {
 	g := grpc.NewServer()
-	s := &server{blocker: blocker, reporter: reporter, logger: logger, reportOnly: reportOnly}
+	s := &server{blocker: blocker, roProvider: reportOnlyProvider, reporter: reporter, logger: logger}
 	registerRateLimitServiceServer(g, s)
 
 	return g
 }
 
 type server struct {
+	roProvider ReportOnlyProvider
 	logger     logrus.FieldLogger
 	reporter   MetricReporter
 	blocker    RequestBlockerFunc
-	reportOnly bool
 }
 
 func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
@@ -43,11 +47,13 @@ func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 		OverallCode: ratelimit.RateLimitResponse_OK,
 	}
 
-	if block && !s.reportOnly {
+	reportOnly := s.roProvider.GetReportOnly()
+
+	if block && !reportOnly {
 		resp.OverallCode = ratelimit.RateLimitResponse_OVER_LIMIT
 	}
 
-	if s.reportOnly && block {
+	if block && reportOnly {
 		s.logger.Infof("would block on request %v", req)
 	}
 

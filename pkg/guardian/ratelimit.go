@@ -21,31 +21,36 @@ func (l Limit) String() string {
 	return fmt.Sprintf("Limit(%d per %v, enabled: %v)", l.Count, l.Duration, l.Enabled)
 }
 
-// LimitStore is a data store capable of storing, incrementing and expiring the count of a key
-type LimitStore interface {
+// LimitProvider provides the current limit settings
+type LimitProvider interface {
 	// GetLimit returns the current limit settings
 	GetLimit() Limit
+}
+
+// Counter is a data store capable of incrementing and expiring the count of a key
+type Counter interface {
 
 	// Incr increments key by count and sets the expiration to expireIn from now. The result or an error is returned
 	// uint64 is used to accomodate the largest count possible
 	Incr(context context.Context, key string, count uint, expireIn time.Duration) (uint64, error)
 }
 
-// NewIPRateLimiter creates a new IP rate limiter using the given store
-func NewIPRateLimiter(store LimitStore, logger logrus.FieldLogger) *IPRateLimiter {
-	return &IPRateLimiter{store: store, logger: logger}
+// NewIPRateLimiter creates a new IP rate limiter
+func NewIPRateLimiter(conf LimitProvider, counter Counter, logger logrus.FieldLogger) *IPRateLimiter {
+	return &IPRateLimiter{conf: conf, counter: counter, logger: logger}
 }
 
 // IPRateLimiter is an IP based rate limiter
 type IPRateLimiter struct {
-	store  LimitStore
-	logger logrus.FieldLogger
+	conf    LimitProvider
+	counter Counter
+	logger  logrus.FieldLogger
 }
 
 // Limit limits a request if request exceeds rate limit
 func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
 
-	limit := rl.store.GetLimit()
+	limit := rl.conf.GetLimit()
 	rl.logger.Debugf("fetched limit %v", limit)
 
 	if !limit.Enabled {
@@ -56,10 +61,10 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 	key := rl.SlotKey(request, time.Now(), limit.Duration)
 	rl.logger.Debugf("generated key %v for request %v", key, request)
 
-	currCount, err := rl.store.Incr(context, key, 1, limit.Duration)
+	currCount, err := rl.counter.Incr(context, key, 1, limit.Duration)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
-		rl.logger.WithError(err).Error("store returned error when call incr")
+		rl.logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}
 

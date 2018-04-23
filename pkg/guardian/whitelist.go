@@ -26,17 +26,17 @@ func CondStopOnWhitelistFunc(whitelister *IPWhitelister) CondRequestBlockerFunc 
 	return f
 }
 
-type IPWhitelistStore interface {
-	GetWhitelist() ([]net.IPNet, error)
+type WhitelistProvider interface {
+	GetWhitelist() []net.IPNet
 }
 
-func NewIPWhitelister(store IPWhitelistStore, logger logrus.FieldLogger) *IPWhitelister {
-	return &IPWhitelister{store: store, logger: logger}
+func NewIPWhitelister(provider WhitelistProvider, logger logrus.FieldLogger) *IPWhitelister {
+	return &IPWhitelister{provider: provider, logger: logger}
 }
 
 type IPWhitelister struct {
-	store  IPWhitelistStore
-	logger logrus.FieldLogger
+	provider WhitelistProvider
+	logger   logrus.FieldLogger
 }
 
 func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
@@ -48,12 +48,8 @@ func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool
 	}
 
 	w.logger.Debug("Getting whitelist")
-	whitelist, err := w.store.GetWhitelist()
+	whitelist := w.provider.GetWhitelist()
 	w.logger.Debugf("Got whitelist with length %d", len(whitelist))
-
-	if err != nil {
-		return false, errors.Wrap(err, "error fetching whitelist")
-	}
 
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {
