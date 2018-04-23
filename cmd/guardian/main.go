@@ -26,7 +26,7 @@ func main() {
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
 	limitDuration := kingpin.Flag("limit-duration", "duration to apply limit. supports time.ParseDuration format.").Short('y').Default("1s").OverrideDefaultFromEnvar("LIMIT_DURATION").Duration()
 	limitEnabled := kingpin.Flag("limit-enabled", "rate limit enabled").Short('e').Default("true").OverrideDefaultFromEnvar("LIMIT_ENBALED").Bool()
-	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("LIMIT_ENBALED").Duration()
+	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("CONF_UPDATE_INTERVAL").Duration()
 	dogstatsdTags := kingpin.Flag("dogstatsd-tag", "tag to add to dogstatsd metrics").Strings()
 	kingpin.Parse()
 
