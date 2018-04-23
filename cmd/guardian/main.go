@@ -88,7 +88,7 @@ func main() {
 	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
-	condRatelimitFunc := guardian.CondStopOnBlock(rateLimiter.Limit)
+	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
 	condFuncChain := guardian.CondChain(condWhitelistFunc, condRatelimitFunc)
 
 	logger.Infof("starting server on %v", *address)

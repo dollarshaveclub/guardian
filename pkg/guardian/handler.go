@@ -63,11 +63,11 @@ func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 	return chain
 }
 
-// CondStopOnBlock wraps a request blocker function and returns true for stop if the request was blocked
-func CondStopOnBlock(f RequestBlockerFunc) CondRequestBlockerFunc {
+// CondStopOnBlockOrError wraps a request blocker function and returns true for stop if the request was blocked or errored out
+func CondStopOnBlockOrError(f RequestBlockerFunc) CondRequestBlockerFunc {
 	return func(c context.Context, r Request) (bool, bool, uint32, error) {
 		blocked, remaining, err := f(c, r)
-		stop := blocked == true
+		stop := (blocked == true || err != nil)
 
 		return stop, blocked, remaining, err
 	}
