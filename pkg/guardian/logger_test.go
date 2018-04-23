@@ -6,4 +6,4 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var NullLogger = &logrus.Logger{Out: ioutil.Discard}
+var TestingLogger = &logrus.Logger{Out: ioutil.Discard}

@@ -22,7 +22,7 @@ func (f FakeWhitelistStore) GetWhitelist() ([]net.IPNet, error) {
 
 func TestIsWhitelisted(t *testing.T) {
 	store := &FakeWhitelistStore{}
-	whitelister := NewIPWhitelister(store, NullLogger)
+	whitelister := NewIPWhitelister(store, TestingLogger)
 
 	tests := []struct {
 		// test case setup
