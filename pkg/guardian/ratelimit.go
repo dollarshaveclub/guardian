@@ -50,6 +50,12 @@ type IPRateLimiter struct {
 
 // Limit limits a request if request exceeds rate limit
 func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
+	start := time.Now()
+	ratelimited := false
+	errorOccurred := false
+	defer func() {
+		rl.reporter.HandledRatelimit(request, ratelimited, errorOccurred, time.Now().Sub(start))
+	}()
 
 	limit := rl.conf.GetLimit()
 	rl.logger.Debugf("fetched limit %v", limit)
@@ -67,11 +73,13 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
 		rl.logger.WithError(err).Error("counter returned error when call incr")
+		errorOccurred = true
 		return false, 0, err
 	}
 
 	if currCount > limit.Count {
 		rl.logger.Debugf("request %v blocked", request)
+		ratelimited = true
 		return true, 0, nil // block request, rate limited
 	}
 

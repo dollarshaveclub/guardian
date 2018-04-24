@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -55,10 +56,18 @@ type IPWhitelister struct {
 }
 
 func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
+	start := time.Now()
+	whitelisted := false
+	errorOccurred := false
+	defer func() {
+		w.reporter.HandledWhitelist(req, whitelisted, errorOccurred, time.Now().Sub(start))
+	}()
+
 	w.logger.Debugf("checking whitelist for request %#v", req)
 	ip := net.ParseIP(req.RemoteAddress)
 	w.logger.Debugf("parsed IP from request %#v", req)
 	if ip == nil {
+		errorOccurred = true
 		return false, fmt.Errorf("invalid remote address -- not IP")
 	}
 
@@ -70,6 +79,7 @@ func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (boo
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {
 			w.logger.Debugf("Found %v in cidr %v of whitelist", ip, cidr.String())
+			whitelisted = true
 			return true, nil
 		}
 		w.logger.Debugf("CIDR %v does not contain %v of whitelist", cidr.String(), ip)
