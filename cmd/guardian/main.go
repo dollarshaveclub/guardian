@@ -28,6 +28,8 @@ func main() {
 	limitEnabled := kingpin.Flag("limit-enabled", "rate limit enabled").Short('e').Default("true").OverrideDefaultFromEnvar("LIMIT_ENBALED").Bool()
 	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("CONF_UPDATE_INTERVAL").Duration()
 	dogstatsdTags := kingpin.Flag("dogstatsd-tag", "tag to add to dogstatsd metrics").Strings()
+	defaultWhitelist := kingpin.Flag("whitelist-cidr", "default cidr to whitelist until sync with redis occurs").Strings()
+
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -75,7 +77,7 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
 	logger.Infof("starting cache update for conf store")
 	stop := make(chan struct{})
 	wg.Add(1)

@@ -9,6 +9,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func IPNetsFromStrings(ipNetStrs []string) []net.IPNet {
+	ipNets := []net.IPNet{}
+	for _, cidrString := range ipNetStrs {
+		_, cidr, err := net.ParseCIDR(cidrString)
+		if err != nil {
+			continue
+		}
+
+		ipNets = append(ipNets, *cidr)
+	}
+
+	return ipNets
+}
+
 func CondStopOnWhitelistFunc(whitelister *IPWhitelister) CondRequestBlockerFunc {
 	f := func(context context.Context, req Request) (bool, bool, uint32, error) {
 		whitelisted, err := whitelister.IsWhitelisted(context, req)

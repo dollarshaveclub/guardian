@@ -18,8 +18,12 @@ const redisLimitEnabledKey = "guardian_conf:limit_enabled"
 const redisReportOnlyKey = "guardian_conf:reportOnly"
 
 // NewRedisConfStore creates a new RedisConfStore
-func NewRedisConfStore(redis *redis.Client, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
-	defaultConf := conf{whitelist: []net.IPNet{}, limit: defaultLimit, reportOnly: defaultReportOnly}
+func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
+	if defaultWhitelist == nil {
+		defaultWhitelist = []net.IPNet{}
+	}
+
+	defaultConf := conf{whitelist: defaultWhitelist, limit: defaultLimit, reportOnly: defaultReportOnly}
 	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}}
 }
 
@@ -205,7 +209,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	pipe.Exec()
 
 	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
-		newConf.whitelist = rs.ipNetsFromStrings(whitelistStrs)
+		newConf.whitelist = IPNetsFromStrings(whitelistStrs)
 	} else {
 		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
 	}
@@ -251,19 +255,4 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	}
 
 	return newConf
-}
-
-func (rs *RedisConfStore) ipNetsFromStrings(ipNetStrs []string) []net.IPNet {
-	ipNets := []net.IPNet{}
-	for _, cidrString := range ipNetStrs {
-		_, cidr, err := net.ParseCIDR(cidrString)
-		if err != nil {
-			rs.logger.WithError(err).Warnf("error parsing cidr from %v", cidrString)
-			continue
-		}
-
-		ipNets = append(ipNets, *cidr)
-	}
-
-	return ipNets
 }
