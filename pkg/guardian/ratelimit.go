@@ -52,9 +52,9 @@ type IPRateLimiter struct {
 func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
 	start := time.Now()
 	ratelimited := false
-	errorOccurred := false
+	var err error
 	defer func() {
-		rl.reporter.HandledRatelimit(request, ratelimited, errorOccurred, time.Now().Sub(start))
+		rl.reporter.HandledRatelimit(request, ratelimited, err != nil, time.Now().Sub(start))
 	}()
 
 	limit := rl.conf.GetLimit()
@@ -73,14 +73,13 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
 		rl.logger.WithError(err).Error("counter returned error when call incr")
-		errorOccurred = true
 		return false, 0, err
 	}
 
-	if currCount > limit.Count {
+	ratelimited = currCount > limit.Count
+	if ratelimited {
 		rl.logger.Debugf("request %v blocked", request)
-		ratelimited = true
-		return true, 0, nil // block request, rate limited
+		return ratelimited, 0, err // block request, rate limited
 	}
 
 	remaining64 := limit.Count - currCount
@@ -91,7 +90,7 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 	}
 
 	rl.logger.Debugf("request %v allowed with %v remaining requests", request, remaining32)
-	return false, remaining32, nil
+	return ratelimited, remaining32, err
 }
 
 // SlotKey generates the key for a slot determined by the request, slot time, and limit duration
