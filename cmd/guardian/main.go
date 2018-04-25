@@ -6,7 +6,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
@@ -27,7 +26,10 @@ func main() {
 	reqLimit := kingpin.Flag("limit", "request limit per duration.").Short('q').Default("10").OverrideDefaultFromEnvar("LIMIT").Uint64()
 	limitDuration := kingpin.Flag("limit-duration", "duration to apply limit. supports time.ParseDuration format.").Short('y').Default("1s").OverrideDefaultFromEnvar("LIMIT_DURATION").Duration()
 	limitEnabled := kingpin.Flag("limit-enabled", "rate limit enabled").Short('e').Default("true").OverrideDefaultFromEnvar("LIMIT_ENBALED").Bool()
+	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("CONF_UPDATE_INTERVAL").Duration()
 	dogstatsdTags := kingpin.Flag("dogstatsd-tag", "tag to add to dogstatsd metrics").Strings()
+	defaultWhitelist := kingpin.Flag("whitelist-cidr", "default cidr to whitelist until sync with redis occurs").Strings()
+
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -68,31 +70,33 @@ func main() {
 		ReadTimeout:  guardian.DefaultRedisReadTimeout,
 		WriteTimeout: guardian.DefaultRedisWriteTimeout,
 	}
+
+	defaultLimit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
+	logger.Infof("parsed default limit of %v", defaultLimit)
+
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisWhitelistStore := guardian.NewRedisIPWhitelistStore(redis, logger.WithField("context", "ip-whitelister-redis"))
-
-	logger.Infof("starting cache update for whitelist store")
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	logger.Infof("starting cache update for conf store")
 	stop := make(chan struct{})
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		redisWhitelistStore.RunCacheUpdate(30*time.Second, stop)
+		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	whitelister := guardian.NewIPWhitelister(redisWhitelistStore, logger.WithField("context", "ip-whitelister"))
+	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 
-	limit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	redisLimitStore := guardian.NewRedisLimitStore(limit, redis, logger.WithField("context", "ip-rate-limiter-redis"))
-	rateLimiter := guardian.NewIPRateLimiter(redisLimitStore, logger.WithField("context", "ip-rate-limiter"))
+	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"))
+	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), reporter)
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
 	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
 	condFuncChain := guardian.CondChain(condWhitelistFunc, condRatelimitFunc)
 
 	logger.Infof("starting server on %v", *address)
-	server := guardian.NewServer(condFuncChain, *reportOnly, logger.WithField("context", "server"), reporter)
+	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
 
 	wg.Add(1)
 	go func() {

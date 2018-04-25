@@ -4,10 +4,26 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
+
+func IPNetsFromStrings(ipNetStrs []string, logger logrus.FieldLogger) []net.IPNet {
+	ipNets := []net.IPNet{}
+	for _, cidrString := range ipNetStrs {
+		_, cidr, err := net.ParseCIDR(cidrString)
+		if err != nil {
+			logger.WithError(err).Errorf("error parsing cidr %v", cidrString)
+			continue
+		}
+
+		ipNets = append(ipNets, *cidr)
+	}
+
+	return ipNets
+}
 
 func CondStopOnWhitelistFunc(whitelister *IPWhitelister) CondRequestBlockerFunc {
 	f := func(context context.Context, req Request) (bool, bool, uint32, error) {
@@ -26,38 +42,45 @@ func CondStopOnWhitelistFunc(whitelister *IPWhitelister) CondRequestBlockerFunc 
 	return f
 }
 
-type IPWhitelistStore interface {
-	GetWhitelist() ([]net.IPNet, error)
+type WhitelistProvider interface {
+	GetWhitelist() []net.IPNet
 }
 
-func NewIPWhitelister(store IPWhitelistStore, logger logrus.FieldLogger) *IPWhitelister {
-	return &IPWhitelister{store: store, logger: logger}
+func NewIPWhitelister(provider WhitelistProvider, logger logrus.FieldLogger, reporter MetricReporter) *IPWhitelister {
+	return &IPWhitelister{provider: provider, logger: logger, reporter: reporter}
 }
 
 type IPWhitelister struct {
-	store  IPWhitelistStore
-	logger logrus.FieldLogger
+	provider WhitelistProvider
+	logger   logrus.FieldLogger
+	reporter MetricReporter
 }
 
-func (w IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
+func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
+	start := time.Now()
+	whitelisted := false
+	errorOccurred := false
+	defer func() {
+		w.reporter.HandledWhitelist(req, whitelisted, errorOccurred, time.Now().Sub(start))
+	}()
+
 	w.logger.Debugf("checking whitelist for request %#v", req)
 	ip := net.ParseIP(req.RemoteAddress)
 	w.logger.Debugf("parsed IP from request %#v", req)
 	if ip == nil {
+		errorOccurred = true
 		return false, fmt.Errorf("invalid remote address -- not IP")
 	}
 
 	w.logger.Debug("Getting whitelist")
-	whitelist, err := w.store.GetWhitelist()
+	whitelist := w.provider.GetWhitelist()
 	w.logger.Debugf("Got whitelist with length %d", len(whitelist))
-
-	if err != nil {
-		return false, errors.Wrap(err, "error fetching whitelist")
-	}
+	w.reporter.CurrentWhitelist(whitelist)
 
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {
 			w.logger.Debugf("Found %v in cidr %v of whitelist", ip, cidr.String())
+			whitelisted = true
 			return true, nil
 		}
 		w.logger.Debugf("CIDR %v does not contain %v of whitelist", cidr.String(), ip)

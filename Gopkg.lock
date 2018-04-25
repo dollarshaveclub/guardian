@@ -77,6 +77,18 @@
   version = "v0.2.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  revision = "7554cd9344cec97297fa6649b055a8c98c2a1e55"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  revision = "b7773ae218740a7be65057fc60b366a49b538a44"
+
+[[projects]]
   name = "github.com/lyft/protoc-gen-validate"
   packages = ["validate"]
   revision = "930a67cf7ba41b9d9436ad7a1be70a5d5ff6e1fc"
@@ -189,6 +201,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "36698bb46921c3ec065f5a2f57f5bd1f1571a3753041b5fbf36bbf5fa384057d"
+  inputs-digest = "dfe0b18190539c336fcb401cc90bb3b3a7e76d7f1ae90b4bb951fe859f625acd"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -12,24 +12,19 @@ import (
 
 const limitStoreNamespace = "limit_store"
 
-func NewRedisLimitStore(limit Limit, redis *redis.Client, logger logrus.FieldLogger) *RedisLimitStore {
-	return &RedisLimitStore{limit: limit, redis: redis, logger: logger}
+func NewRedisCounter(redis *redis.Client, logger logrus.FieldLogger) *RedisCounter {
+	return &RedisCounter{redis: redis, logger: logger}
 }
 
-// RedisLimitStore is a LimitStore that uses Redis for persistance
+// RedisLimitCounter is a Counter that uses Redis for persistance
 // TODO: fetch the current limit configuration from redis instead of using
 // a static one
-type RedisLimitStore struct {
-	limit  Limit
+type RedisCounter struct {
 	redis  *redis.Client
 	logger logrus.FieldLogger
 }
 
-func (rs *RedisLimitStore) GetLimit() Limit {
-	return rs.limit
-}
-
-func (rs *RedisLimitStore) Incr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
+func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
 	key = NamespacedKey(limitStoreNamespace, key)
 
 	rs.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())

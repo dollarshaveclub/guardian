@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 type FakeLimitStore struct {
@@ -35,7 +33,7 @@ func TestLimitRateLimits(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, TestingLogger)
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -66,7 +64,7 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 	limit := Limit{Count: 1, Duration: 1 * time.Second, Enabled: false}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, TestingLogger)
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -95,7 +93,7 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, TestingLogger)
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -140,7 +138,7 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, TestingLogger)
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	slot := rl.SlotKey(req, time.Now(), limit.Duration)
@@ -165,7 +163,7 @@ func TestLimitFailsOpen(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
-	rl := NewIPRateLimiter(fstore, TestingLogger)
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
@@ -180,7 +178,9 @@ func TestLimitFailsOpen(t *testing.T) {
 }
 
 func TestSlotKeyGeneration(t *testing.T) {
-	rl := NewIPRateLimiter(&FakeLimitStore{}, logrus.StandardLogger())
+	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
+	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	referenceRequest := Request{RemoteAddress: "192.168.1.2"}
 	referenceTime := time.Unix(1522969710, 0)
