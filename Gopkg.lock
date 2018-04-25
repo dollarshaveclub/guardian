@@ -23,6 +23,21 @@
   revision = "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/alicebob/gopher-json"
+  packages = ["."]
+  revision = "5a6b3ba71ee69b77cf64febf8b5a7526ca5eaef0"
+
+[[projects]]
+  name = "github.com/alicebob/miniredis"
+  packages = [
+    ".",
+    "server"
+  ]
+  revision = "b1f1e97dadd4ad77e6b67af72017f6356aeaf854"
+  version = "2.4"
+
+[[projects]]
   name = "github.com/envoyproxy/go-control-plane"
   packages = [
     "envoy/api/v2/ratelimit",
@@ -30,6 +45,15 @@
   ]
   revision = "89abfa00ef3cae559f2739ce9e1f181ffc7caf92"
   version = "v0.1"
+
+[[projects]]
+  name = "github.com/garyburd/redigo"
+  packages = [
+    "internal",
+    "redis"
+  ]
+  revision = "a69d19351219b6dd56f274f96d85a7014a2ec34e"
+  version = "v1.6.0"
 
 [[projects]]
   name = "github.com/go-redis/redis"
@@ -105,6 +129,17 @@
   packages = ["."]
   revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
   version = "v1.0.5"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/yuin/gopher-lua"
+  packages = [
+    ".",
+    "ast",
+    "parse",
+    "pm"
+  ]
+  revision = "b0fa786cf4ea360285924c4a7fd42325be57aec8"
 
 [[projects]]
   branch = "master"
@@ -201,6 +236,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dfe0b18190539c336fcb401cc90bb3b3a7e76d7f1ae90b4bb951fe859f625acd"
+  inputs-digest = "b1a9de15e7953694933992f7319121d60808c8da8099f77442c843aff43db82a"
   solver-name = "gps-cdcl"
   solver-version = 1
