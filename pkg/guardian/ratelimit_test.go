@@ -27,6 +27,16 @@ func (fl *FakeLimitStore) Incr(context context.Context, key string, count uint, 
 	return fl.count[key], nil
 }
 
+func TestLimitString(t *testing.T) {
+	limit := Limit{Count: 3, Duration: time.Second, Enabled: true}
+	got := limit.String()
+	expected := "Limit(3 per 1s, enabled: true)"
+
+	if got != expected {
+		t.Errorf("expected: %v received: %v", expected, got)
+	}
+}
+
 func TestLimitRateLimits(t *testing.T) {
 
 	// 3 rps

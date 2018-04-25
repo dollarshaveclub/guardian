@@ -9,6 +9,7 @@ import (
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
+	"github.com/dollarshaveclub/guardian/pkg/rate_limit_grpc"
 	"github.com/go-redis/redis"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -97,14 +98,15 @@ func main() {
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
+	grpcServer := rate_limit_grpc.NewRateLimitServer(server)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		waitGracefulStop(server, stop)
+		waitGracefulStop(grpcServer, stop)
 	}()
 
-	err = server.Serve(l)
+	err = grpcServer.Serve(l)
 	if err != nil {
 		logger.WithError(err).Error("error running server")
 	}
