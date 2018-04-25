@@ -209,7 +209,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	pipe.Exec()
 
 	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
-		newConf.whitelist = IPNetsFromStrings(whitelistStrs)
+		newConf.whitelist = IPNetsFromStrings(whitelistStrs, rs.logger)
 	} else {
 		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
 	}

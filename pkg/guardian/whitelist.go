@@ -10,11 +10,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func IPNetsFromStrings(ipNetStrs []string) []net.IPNet {
+func IPNetsFromStrings(ipNetStrs []string, logger logrus.FieldLogger) []net.IPNet {
 	ipNets := []net.IPNet{}
 	for _, cidrString := range ipNetStrs {
 		_, cidr, err := net.ParseCIDR(cidrString)
 		if err != nil {
+			logger.WithError(err).Errorf("error parsing cidr %v", cidrString)
 			continue
 		}
 

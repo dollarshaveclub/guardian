@@ -77,7 +77,7 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
 	logger.Infof("starting cache update for conf store")
 	stop := make(chan struct{})
 	wg.Add(1)
