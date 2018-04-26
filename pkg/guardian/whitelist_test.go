@@ -66,6 +66,33 @@ func TestIsWhitelisted(t *testing.T) {
 	}
 }
 
+func TestCondStopOnWhitelist(t *testing.T) {
+	store := &FakeWhitelistStore{whitelist: parseCIDRs([]string{"10.0.0.1/24"})}
+	whitelister := NewIPWhitelister(store, TestingLogger, NullReporter{})
+
+	condFunc := CondStopOnWhitelistFunc(whitelister)
+
+	stop, blocked, remaining, err := condFunc(context.Background(), Request{RemoteAddress: "10.0.0.2"})
+
+	expectedErr := error(nil)
+	expectedStop := true
+	expectedBlock := false
+	expectedRemaining := RequestsRemainingMax
+
+	if err != expectedErr {
+		t.Fatalf("expected: %v received: %v", expectedErr, err)
+	}
+	if stop != expectedStop {
+		t.Fatalf("expected: %v received: %v", expectedStop, stop)
+	}
+	if blocked != expectedBlock {
+		t.Fatalf("expected: %v received: %v", expectedBlock, blocked)
+	}
+	if remaining != expectedRemaining {
+		t.Fatalf("expected: %v received: %v", expectedRemaining, remaining)
+	}
+}
+
 func parseCIDRs(strs []string) []net.IPNet {
 	out := []net.IPNet{}
 
