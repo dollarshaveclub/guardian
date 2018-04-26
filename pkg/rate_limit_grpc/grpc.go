@@ -1,4 +1,4 @@
-package guardian
+package rate_limit_grpc
 
 import (
 	"context"
@@ -6,6 +6,12 @@ import (
 	ratelimit "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v2"
 	"google.golang.org/grpc"
 )
+
+func NewRateLimitServer(srv ratelimit.RateLimitServiceServer) *grpc.Server {
+	g := grpc.NewServer()
+	registerRateLimitServiceServer(g, srv)
+	return g
+}
 
 // So this is mostly copy past from https://github.com/envoyproxy/go-control-plane/blob/v0.1/envoy/service/ratelimit/v2/rls.pb.go#L286
 // but with the correct ServiceName and FullMethod

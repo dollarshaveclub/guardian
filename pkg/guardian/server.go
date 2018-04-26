@@ -7,29 +7,24 @@ import (
 	"github.com/sirupsen/logrus"
 
 	ratelimit "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v2"
-	"google.golang.org/grpc"
 )
 
 type ReportOnlyProvider interface {
 	GetReportOnly() bool
 }
 
-func NewServer(blocker RequestBlockerFunc, reportOnlyProvider ReportOnlyProvider, logger logrus.FieldLogger, reporter MetricReporter) *grpc.Server {
-	g := grpc.NewServer()
-	s := &server{blocker: blocker, roProvider: reportOnlyProvider, reporter: reporter, logger: logger}
-	registerRateLimitServiceServer(g, s)
-
-	return g
+func NewServer(blocker RequestBlockerFunc, reportOnlyProvider ReportOnlyProvider, logger logrus.FieldLogger, reporter MetricReporter) *Server {
+	return &Server{blocker: blocker, roProvider: reportOnlyProvider, reporter: reporter, logger: logger}
 }
 
-type server struct {
+type Server struct {
 	roProvider ReportOnlyProvider
 	logger     logrus.FieldLogger
 	reporter   MetricReporter
 	blocker    RequestBlockerFunc
 }
 
-func (s *server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
+func (s *Server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
 	start := time.Now()
 	req := RequestFromRateLimitRequest(relreq)
 
