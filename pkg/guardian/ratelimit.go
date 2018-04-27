@@ -30,9 +30,9 @@ type LimitProvider interface {
 // Counter is a data store capable of incrementing and expiring the count of a key
 type Counter interface {
 
-	// Incr increments key by count and sets the expiration to expireIn from now. The result or an error is returned
-	// uint64 is used to accomodate the largest count possible
-	Incr(context context.Context, key string, count uint, expireIn time.Duration) (uint64, error)
+	// Incr increments key by count and sets the expiration to expireIn from now. The result of the incr, whether to force block,
+	// and an error is returned
+	Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error)
 }
 
 // NewIPRateLimiter creates a new IP rate limiter
@@ -69,14 +69,14 @@ func (rl *IPRateLimiter) Limit(context context.Context, request Request) (bool, 
 	key := rl.SlotKey(request, time.Now(), limit.Duration)
 	rl.logger.Debugf("generated key %v for request %v", key, request)
 
-	currCount, err := rl.counter.Incr(context, key, 1, limit.Duration)
+	currCount, blocked, err := rl.counter.Incr(context, key, 1, limit.Count, limit.Duration)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
 		rl.logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}
 
-	ratelimited = currCount > limit.Count
+	ratelimited = blocked || currCount > limit.Count
 	if ratelimited {
 		rl.logger.Debugf("request %v blocked", request)
 		return ratelimited, 0, err // block request, rate limited

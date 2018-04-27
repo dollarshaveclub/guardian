@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
@@ -65,11 +66,8 @@ func main() {
 
 	wg := sync.WaitGroup{}
 	redisOpts := &redis.Options{
-		Addr:         *redisAddress,
-		PoolSize:     *redisPoolSize,
-		DialTimeout:  guardian.DefaultRedisDialTimeout,
-		ReadTimeout:  guardian.DefaultRedisReadTimeout,
-		WriteTimeout: guardian.DefaultRedisWriteTimeout,
+		Addr:     *redisAddress,
+		PoolSize: *redisPoolSize,
 	}
 
 	defaultLimit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
@@ -89,7 +87,13 @@ func main() {
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 
-	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"))
+	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"), reporter)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		redisCounter.Run(30*time.Second, stop)
+	}()
+
 	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), reporter)
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)

@@ -26,9 +26,13 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	reporter.Duration(req, false, false, time.Second)
 	reporter.HandledWhitelist(req, true, false, time.Second)
 	reporter.HandledRatelimit(req, true, false, time.Second)
+	reporter.RedisCounterIncr(time.Second, false)
+	reporter.RedisCounterPruned(time.Second, 100, 20)
 	reporter.CurrentLimit(Limit{})
 	reporter.CurrentWhitelist([]net.IPNet{})
 	reporter.CurrentReportOnlyMode(false)
+
+	time.Sleep(time.Second) // wait for all the go funcs to run
 
 	if len(writer.received) == 0 {
 		t.Fatalf("expected: %v, received: %v", "> 0", len(writer.received))

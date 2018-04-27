@@ -11,20 +11,21 @@ type FakeLimitStore struct {
 	limit       Limit
 	count       map[string]uint64
 	injectedErr error
+	forceBlock  bool
 }
 
 func (fl *FakeLimitStore) GetLimit() Limit {
 	return fl.limit
 }
 
-func (fl *FakeLimitStore) Incr(context context.Context, key string, count uint, expireIn time.Duration) (uint64, error) {
+func (fl *FakeLimitStore) Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error) {
 	if fl.injectedErr != nil {
-		return 0, fl.injectedErr
+		return 0, false, fl.injectedErr
 	}
 
-	fl.count[key] += uint64(count)
+	fl.count[key] += uint64(incryBy)
 
-	return fl.count[key], nil
+	return fl.count[key], fl.forceBlock, nil
 }
 
 func TestLimitString(t *testing.T) {
@@ -82,7 +83,7 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 	for i := 0; i < sentCount; i++ {
 		blocked, remaining, err := rl.Limit(context.Background(), req)
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Fatalf("unexpected error: %v", err)
 		}
 
 		expectedBlocked := false
@@ -111,7 +112,7 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	for i := 0; i < sentCount; i++ {
 		blocked, remaining, err := rl.Limit(context.Background(), req)
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Fatalf("unexpected error: %v", err)
 		}
 
 		expectedBlocked := (limit.Count < uint64(i+1))
@@ -131,7 +132,7 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	time.Sleep(limit.Duration)
 	blocked, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if blocked != false {
@@ -156,7 +157,7 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if blocked != false {
@@ -179,11 +180,32 @@ func TestLimitFailsOpen(t *testing.T) {
 
 	blocked, _, err := rl.Limit(context.Background(), req)
 	if err == nil {
-		t.Error("expected error but received nothing")
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if blocked != false {
 		t.Error("failed closed when it should have failed open")
+	}
+}
+
+func TestLimitRateLimitsOnBlock(t *testing.T) {
+
+	// 3 rps
+	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
+
+	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), forceBlock: true}
+	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+
+	req := Request{RemoteAddress: "192.168.1.2"}
+
+	blocked, _, err := rl.Limit(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected error but received nothing")
+	}
+
+	expected := true
+	if blocked != expected {
+		t.Fatalf("expected: %v received: %v", expected, blocked)
 	}
 }
 
