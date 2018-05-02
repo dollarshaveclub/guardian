@@ -1,8 +1,8 @@
 package guardian
 
 import (
-	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
@@ -44,31 +44,31 @@ const authorityKey = "authority"
 const ingressClassKey = "ingress_class"
 
 func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := fmt.Sprintf("%v:%v", authorityKey, request.Authority)
-	blockedTag := fmt.Sprintf("%v:%v", blockedKey, blocked)
-	errorTag := fmt.Sprintf("%v:%v", errorKey, errorOccurred)
+	authorityTag := authorityKey + ":" + request.Authority
+	blockedTag := blockedKey + ":" + strconv.FormatBool(blocked)
+	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 	tags := append([]string{authorityTag, blockedTag, errorTag}, d.DefaultTags...)
 	go d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), tags, 1)
 }
 
 func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := fmt.Sprintf("%v:%v", authorityKey, request.Authority)
-	whitelistedTag := fmt.Sprintf("%v:%v", whitelistedKey, whitelisted)
-	errorTag := fmt.Sprintf("%v:%v", errorKey, errorOccurred)
+	authorityTag := authorityKey + ":" + request.Authority
+	whitelistedTag := whitelistedKey + ":" + strconv.FormatBool(whitelisted)
+	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 	tags := append([]string{authorityTag, whitelistedTag, errorTag}, d.DefaultTags...)
 	go d.Client.TimeInMilliseconds(reqWhitelistMetricName, float64(duration/time.Millisecond), tags, 1.0)
 }
 
 func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := fmt.Sprintf("%v:%v", authorityKey, request.Authority)
-	ratelimitedTag := fmt.Sprintf("%v:%v", whitelistedKey, ratelimited)
-	errorTag := fmt.Sprintf("%v:%v", errorKey, errorOccurred)
+	authorityTag := authorityKey + ":" + request.Authority
+	ratelimitedTag := ratelimitedKey + ":" + strconv.FormatBool(ratelimited)
+	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 	tags := append([]string{authorityTag, ratelimitedTag, errorTag}, d.DefaultTags...)
 	go d.Client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
 }
 
 func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
-	errorTag := fmt.Sprintf("%v:%v", errorKey, errorOccurred)
+	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 	tags := append([]string{errorTag}, d.DefaultTags...)
 	go d.Client.TimeInMilliseconds(redisCounterIncrMetricName, float64(duration/time.Millisecond), tags, 1.0)
 }
