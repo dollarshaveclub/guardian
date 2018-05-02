@@ -1,7 +1,12 @@
-VERSION ?= `git rev-parse HEAD`
+COMMIT   = `git rev-parse HEAD`
+REPO    ?= github.com/dollarshaveclub/guardian
+IMAGE   ?= quay.io/dollarshaveclub/guardian
+
 .PHONY: docker
 docker:
-	docker build . -t quay.io/dollarshaveclub/guardian:${VERSION}
-	docker push quay.io/dollarshaveclub/guardian:${VERSION}
+	docker build . -t ${IMAGE}:${COMMIT} --build-arg COMMIT=${COMMIT}
+	docker push ${IMAGE}:${COMMIT}
+
+.PHONY: cli
 cli:
-	go install github.com/dollarshaveclub/guardian/cmd/guardian-cli
+	go install -ldflags "-X ${REPO}/internal/version.CommitSHA=${COMMIT}" ${REPO}/cmd/guardian-cli
