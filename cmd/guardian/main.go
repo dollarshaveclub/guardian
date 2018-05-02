@@ -120,7 +120,7 @@ func main() {
 	if *profilerEnabled {
 		config := profiler.Config{
 			Service:        "guardian",
-			ServiceVersion: version.CommitSHA,
+			ServiceVersion: version.Revision,
 			ProjectID:      *profilerProjectID,
 			MutexProfiling: true,
 		}

@@ -1,6 +1,6 @@
 package version
 
 var (
-	// CommitSHA of build
-	CommitSHA = "UNKNOWN"
+	// Revision of build
+	Revision = "UNKNOWN"
 )
