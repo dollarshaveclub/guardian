@@ -8,7 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
+	"cloud.google.com/go/profiler"
+
 	"github.com/DataDog/datadog-go/statsd"
+	"github.com/dollarshaveclub/guardian/internal/version"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/dollarshaveclub/guardian/pkg/rate_limit_grpc"
 	"github.com/go-redis/redis"
@@ -31,6 +36,8 @@ func main() {
 	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("CONF_UPDATE_INTERVAL").Duration()
 	dogstatsdTags := kingpin.Flag("dogstatsd-tag", "tag to add to dogstatsd metrics").Strings()
 	defaultWhitelist := kingpin.Flag("whitelist-cidr", "default cidr to whitelist until sync with redis occurs").Strings()
+	profilerEnabled := kingpin.Flag("profiler-enabled", "GCP Stackdriver Profiler enabled").Default("false").OverrideDefaultFromEnvar("PROFILER_ENBALED").Bool()
+	profilerProjectID := kingpin.Flag("profiler-project-id", "GCP Stackdriver Profiler project ID").OverrideDefaultFromEnvar("PROFILER_PROJECT_ID").String()
 
 	kingpin.Parse()
 
@@ -109,6 +116,18 @@ func main() {
 		defer wg.Done()
 		waitGracefulStop(grpcServer, stop)
 	}()
+
+	if *profilerEnabled {
+		config := profiler.Config{
+			Service:        "guardian",
+			ServiceVersion: version.CommitSHA,
+			ProjectID:      *profilerProjectID,
+			MutexProfiling: true,
+		}
+		if err := profiler.Start(config); err != nil {
+			logger.WithError(err).Error("cannot start the profiler")
+		}
+	}
 
 	err = grpcServer.Serve(l)
 	if err != nil {
