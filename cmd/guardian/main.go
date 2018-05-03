@@ -38,7 +38,7 @@ func main() {
 	defaultWhitelist := kingpin.Flag("whitelist-cidr", "default cidr to whitelist until sync with redis occurs").Strings()
 	profilerEnabled := kingpin.Flag("profiler-enabled", "GCP Stackdriver Profiler enabled").Default("false").OverrideDefaultFromEnvar("PROFILER_ENABLED").Bool()
 	profilerProjectID := kingpin.Flag("profiler-project-id", "GCP Stackdriver Profiler project ID").OverrideDefaultFromEnvar("PROFILER_PROJECT_ID").String()
-
+	profilerServiceName := kingpin.Flag("profiler-service-name", "GCP Stackdriver Profiler service name").Default("guardian").OverrideDefaultFromEnvar("PROFILER_SERVICE_NAME").String()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -119,7 +119,7 @@ func main() {
 
 	if *profilerEnabled {
 		config := profiler.Config{
-			Service:        "guardian",
+			Service:        *profilerServiceName,
 			ServiceVersion: version.Revision,
 			ProjectID:      *profilerProjectID,
 			MutexProfiling: true,
