@@ -4,15 +4,18 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics/dogstatsd"
 
 	_ "net/http/pprof"
 
 	"cloud.google.com/go/profiler"
 
-	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/internal/version"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/dollarshaveclub/guardian/pkg/rate_limit_grpc"
@@ -60,15 +63,24 @@ func main() {
 	if len(*dogstatsdAddress) == 0 {
 		reporter = guardian.NullReporter{}
 	} else {
-		ddStatsd, err := statsd.NewBuffered(*dogstatsdAddress, 1000)
 
-		if err != nil {
-			logger.WithError(err).Errorf("could create dogstatsd client with address %s", *dogstatsdAddress)
-			os.Exit(1)
+		lvs := []string{}
+		for _, tag := range *dogstatsdTags {
+			split := strings.Split(tag, ":")
+			if len(split) != 2 {
+				logger.Warnf("malformed dogstatsd tag: %v", tag)
+				continue
+			}
+
+			lvs = append(lvs, split[0], split[1])
 		}
 
-		ddStatsd.Namespace = "guardian."
-		reporter = &guardian.DataDogReporter{Client: ddStatsd, DefaultTags: *dogstatsdTags}
+		ddStatsd := dogstatsd.New("guardian.", log.NewNopLogger(), lvs...)
+		reporter = guardian.NewDataDogReporter(ddStatsd)
+		report := time.NewTicker(5 * time.Second)
+		defer report.Stop()
+
+		go ddStatsd.SendLoop(report.C, "udp", *dogstatsdAddress)
 	}
 
 	wg := sync.WaitGroup{}

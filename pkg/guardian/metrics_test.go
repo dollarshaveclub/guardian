@@ -8,21 +8,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/datadog-go/statsd"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics/dogstatsd"
 )
 
 func TestDatadogReportSetsDefaultTags(t *testing.T) {
-	writer := &testStatsdWriter{}
-	client, err := statsd.NewWithWriter(writer)
-	if err != nil {
-		t.Fatalf("got err: %v", err)
-	}
 
-	defaultTags := []string{"default1:tag1", "default2:tag2"}
-	reporter := DataDogReporter{Client: client, DefaultTags: defaultTags}
+	defaultTags := []string{"default1", "tag1", "default2", "tag2"}
+	ddStatsd := dogstatsd.New("guardian.", log.NewNopLogger(), defaultTags...)
+	reporter := NewDataDogReporter(ddStatsd)
+	writer := &testStatsdWriter{}
+
+	report := time.NewTicker(1 * time.Second)
+	defer report.Stop()
+
+	go ddStatsd.WriteLoop(report.C, writer)
 
 	req := Request{}
-
 	reporter.Duration(req, false, false, time.Second)
 	reporter.HandledWhitelist(req, true, false, time.Second)
 	reporter.HandledRatelimit(req, true, false, time.Second)
@@ -32,7 +34,7 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	reporter.CurrentWhitelist([]net.IPNet{})
 	reporter.CurrentReportOnlyMode(false)
 
-	time.Sleep(time.Second) // wait for all the go funcs to run
+	time.Sleep(3 * time.Second) // wait for stats to flush
 
 	if len(writer.received) == 0 {
 		t.Fatalf("expected: %v, received: %v", "> 0", len(writer.received))
@@ -45,13 +47,15 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	}
 }
 
-func contains(x []tag, y []string) bool {
+func contains(x []tag, lvls []string) bool {
 	lookup := make(map[string]bool)
 	for _, s := range x {
 		lookup[string(s)] = true
 	}
 
-	for _, s := range y {
+	for i := 0; i < len(lvls); i += 2 {
+		s := lvls[i] + ":" + lvls[i+1]
+
 		if lookup[s] != true {
 			return false
 		}
