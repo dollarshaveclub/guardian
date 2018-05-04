@@ -50,10 +50,6 @@
   version = "1.0.5"
 
 [[constraint]]
-  name = "github.com/DataDog/datadog-go"
-  version = "2.1.0"
-
-[[constraint]]
   name = "gopkg.in/alecthomas/kingpin.v2"
   version = "2.2.6"
 
@@ -62,13 +58,13 @@
   version = "6.10.2"
 
 [[constraint]]
-  branch = "master"
-  name = "github.com/hashicorp/go-multierror"
-
-[[constraint]]
   name = "github.com/alicebob/miniredis"
   version = "2.4.0"
 
 [[constraint]]
   name = "cloud.google.com/go"
   version = "0.21.0"
+
+[[constraint]]
+  name = "github.com/go-kit/kit"
+  version = "0.7.0"
