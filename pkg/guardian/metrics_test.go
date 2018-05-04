@@ -47,6 +47,31 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	}
 }
 
+func TestDatadogReportsAllDurations(t *testing.T) {
+
+	defaultTags := []string{"default1", "tag1", "default2", "tag2"}
+	ddStatsd := dogstatsd.New("guardian.", log.NewNopLogger(), defaultTags...)
+	reporter := NewDataDogReporter(ddStatsd)
+	writer := &testStatsdWriter{}
+
+	report := time.NewTicker(1 * time.Second)
+	defer report.Stop()
+
+	go ddStatsd.WriteLoop(report.C, writer)
+
+	reporter.Duration(Request{Authority: "one"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "two"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "three"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "four"}, false, false, time.Second)
+	time.Sleep(3 * time.Second) // wait for stats to flush
+	for _, stat := range writer.received {
+		fmt.Println(stat)
+	}
+	if len(writer.received) != 4 {
+		t.Fatalf("expected: %v, received: %v", 4, len(writer.received))
+	}
+}
+
 func contains(x []tag, lvls []string) bool {
 	lookup := make(map[string]bool)
 	for _, s := range x {
