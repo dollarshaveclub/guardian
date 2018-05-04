@@ -49,7 +49,7 @@ func (s *Server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 		resp.OverallCode = ratelimit.RateLimitResponse_OVER_LIMIT
 	}
 
-	if block && reportOnly {
+	if block {
 		s.logger.Infof("would block on request %v", req)
 	}
 
