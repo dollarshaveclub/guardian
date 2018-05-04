@@ -77,7 +77,12 @@ func main() {
 
 		ddStatsd := dogstatsd.New("guardian.", log.NewNopLogger(), lvs...)
 		reporter = guardian.NewDataDogReporter(ddStatsd)
-		report := time.NewTicker(5 * time.Second)
+
+		// batch size is directly related to how frequently we send
+		// if the batch size is too large, metrics get dropped
+		// 100ms is frequent enough that metrics don't
+		// appear to be dropped
+		report := time.NewTicker(100 * time.Millisecond)
 		defer report.Stop()
 
 		go ddStatsd.SendLoop(report.C, "udp", *dogstatsdAddress)
