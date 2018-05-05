@@ -5,7 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/DataDog/datadog-go/statsd"
+	"github.com/go-kit/kit/metrics"
+	"github.com/go-kit/kit/metrics/dogstatsd"
 )
 
 type MetricReporter interface {
@@ -20,8 +21,36 @@ type MetricReporter interface {
 }
 
 type DataDogReporter struct {
-	Client      *statsd.Client
-	DefaultTags []string
+	reqDuration            metrics.Histogram
+	reqWhitelist           metrics.Histogram
+	reqRatelimit           metrics.Histogram
+	redisCounterIncr       metrics.Histogram
+	redisCounterCacheSize  metrics.Gauge
+	redisCounterPruned     metrics.Gauge
+	redisCounterPrunedPass metrics.Histogram
+	ratelimitCount         metrics.Gauge
+	ratelimitDuration      metrics.Gauge
+	ratelimitEnabled       metrics.Gauge
+	whitelistLen           metrics.Gauge
+	reportOnly             metrics.Gauge
+}
+
+func NewDataDogReporter(client *dogstatsd.Dogstatsd) *DataDogReporter {
+	d := &DataDogReporter{}
+	d.reqDuration = client.NewTiming(durationMetricName, 1.0)
+	d.reqWhitelist = client.NewTiming(reqWhitelistMetricName, 1.0)
+	d.reqRatelimit = client.NewTiming(reqRateLimitMetricName, 1.0)
+	d.redisCounterIncr = client.NewTiming(redisCounterIncrMetricName, 1.0)
+	d.redisCounterCacheSize = client.NewGauge(redisCounterCacheSizeMetricName)
+	d.redisCounterPruned = client.NewGauge(redisCounterPrunedMetricName)
+	d.redisCounterPrunedPass = client.NewTiming(redisCounterPrunePassMetricName, 1.0)
+	d.ratelimitCount = client.NewGauge(rateLimitCountMetricName)
+	d.ratelimitDuration = client.NewGauge(rateLimitDurationMetricName)
+	d.ratelimitEnabled = client.NewGauge(rateLimitEnabledMetricName)
+	d.whitelistLen = client.NewGauge(whitelistCountMetricName)
+	d.reportOnly = client.NewGauge(reportOnlyEnabledMetricName)
+
+	return d
 }
 
 const durationMetricName = "request.duration"
@@ -35,6 +64,7 @@ const rateLimitCountMetricName = "rate_limit.count"
 const rateLimitDurationMetricName = "rate_limit.duration"
 const rateLimitEnabledMetricName = "rate_limit.enabled"
 const whitelistCountMetricName = "whitelist.count"
+
 const reportOnlyEnabledMetricName = "report_only.enabled"
 const blockedKey = "blocked"
 const whitelistedKey = "whitelisted"
@@ -44,39 +74,29 @@ const authorityKey = "authority"
 const ingressClassKey = "ingress_class"
 
 func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := authorityKey + ":" + request.Authority
-	blockedTag := blockedKey + ":" + strconv.FormatBool(blocked)
-	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-	tags := append([]string{authorityTag, blockedTag, errorTag}, d.DefaultTags...)
-	go d.Client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), tags, 1)
+	tags := []string{authorityKey, request.Authority, blockedKey, strconv.FormatBool(blocked), errorKey, strconv.FormatBool(errorOccurred)}
+	d.reqDuration.With(tags...).Observe(float64(duration / time.Millisecond))
 }
 
 func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := authorityKey + ":" + request.Authority
-	whitelistedTag := whitelistedKey + ":" + strconv.FormatBool(whitelisted)
-	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-	tags := append([]string{authorityTag, whitelistedTag, errorTag}, d.DefaultTags...)
-	go d.Client.TimeInMilliseconds(reqWhitelistMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	tags := []string{authorityKey, request.Authority, whitelistedKey, strconv.FormatBool(whitelisted), errorKey, strconv.FormatBool(errorOccurred)}
+	d.reqWhitelist.With(tags...).Observe(float64(duration / time.Millisecond))
 }
 
 func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
-	authorityTag := authorityKey + ":" + request.Authority
-	ratelimitedTag := ratelimitedKey + ":" + strconv.FormatBool(ratelimited)
-	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-	tags := append([]string{authorityTag, ratelimitedTag, errorTag}, d.DefaultTags...)
-	go d.Client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	tags := []string{authorityKey, request.Authority, ratelimitedKey, strconv.FormatBool(ratelimited), errorKey, strconv.FormatBool(errorOccurred)}
+	d.reqRatelimit.With(tags...).Observe(float64(duration / time.Millisecond))
 }
 
 func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
-	errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-	tags := append([]string{errorTag}, d.DefaultTags...)
-	go d.Client.TimeInMilliseconds(redisCounterIncrMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	tags := []string{errorKey, strconv.FormatBool(errorOccurred)}
+	d.redisCounterIncr.With(tags...).Observe(float64(duration / time.Millisecond))
 }
 
 func (d *DataDogReporter) RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64) {
-	go d.Client.Gauge(redisCounterCacheSizeMetricName, cacheSize, d.DefaultTags, 1)
-	go d.Client.Gauge(redisCounterPrunedMetricName, prunedCounted, d.DefaultTags, 1)
-	go d.Client.TimeInMilliseconds(redisCounterPrunePassMetricName, float64(duration/time.Millisecond), d.DefaultTags, 1)
+	d.redisCounterPrunedPass.Observe(float64(duration / time.Millisecond))
+	d.redisCounterCacheSize.Set(cacheSize)
+	d.redisCounterPruned.Set(prunedCounted)
 }
 
 func (d *DataDogReporter) CurrentLimit(limit Limit) {
@@ -85,13 +105,13 @@ func (d *DataDogReporter) CurrentLimit(limit Limit) {
 		enabled = 1
 	}
 
-	go d.Client.Gauge(rateLimitCountMetricName, float64(limit.Count), d.DefaultTags, 1)
-	go d.Client.Gauge(rateLimitDurationMetricName, float64(limit.Duration), d.DefaultTags, 1)
-	go d.Client.Gauge(rateLimitEnabledMetricName, float64(enabled), d.DefaultTags, 1)
+	d.ratelimitCount.Set(float64(limit.Count))
+	d.ratelimitDuration.Set(float64(limit.Duration))
+	d.ratelimitEnabled.Set(float64(enabled))
 }
 
 func (d *DataDogReporter) CurrentWhitelist(whitelist []net.IPNet) {
-	go d.Client.Gauge(whitelistCountMetricName, float64(len(whitelist)), d.DefaultTags, 1)
+	d.whitelistLen.Set(float64(len(whitelist)))
 }
 
 func (d *DataDogReporter) CurrentReportOnlyMode(reportOnly bool) {
@@ -99,7 +119,7 @@ func (d *DataDogReporter) CurrentReportOnlyMode(reportOnly bool) {
 	if reportOnly {
 		enabled = 1
 	}
-	go d.Client.Gauge(reportOnlyEnabledMetricName, float64(enabled), d.DefaultTags, 1)
+	d.reportOnly.Set(float64(enabled))
 }
 
 type NullReporter struct{}
