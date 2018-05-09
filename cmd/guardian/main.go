@@ -56,6 +56,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	stop := make(chan struct{})
+
+	wg := sync.WaitGroup{}
 	var reporter guardian.MetricReporter
 	if len(*dogstatsdAddress) == 0 {
 		reporter = guardian.NullReporter{}
@@ -68,10 +71,15 @@ func main() {
 		}
 
 		ddStatsd.Namespace = "guardian."
-		reporter = &guardian.DataDogReporter{Client: ddStatsd, DefaultTags: *dogstatsdTags}
+		ddReporter := guardian.NewDataDogReporter(ddStatsd, *dogstatsdTags)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ddReporter.Run(stop)
+		}()
+		reporter = ddReporter
 	}
 
-	wg := sync.WaitGroup{}
 	redisOpts := &redis.Options{
 		Addr:     *redisAddress,
 		PoolSize: *redisPoolSize,
@@ -85,7 +93,7 @@ func main() {
 
 	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
 	logger.Infof("starting cache update for conf store")
-	stop := make(chan struct{})
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
