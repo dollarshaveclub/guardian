@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-go/statsd"
+	"github.com/sirupsen/logrus"
 )
 
 const durationMetricName = "request.duration"
@@ -42,13 +43,15 @@ type MetricReporter interface {
 
 type DataDogReporter struct {
 	client      *statsd.Client
+	logger      logrus.FieldLogger
 	defaultTags []string
 	c           chan func()
 }
 
-func NewDataDogReporter(client *statsd.Client, defaultTags []string) *DataDogReporter {
+func NewDataDogReporter(client *statsd.Client, defaultTags []string, logger logrus.FieldLogger) *DataDogReporter {
 	return &DataDogReporter{
 		client:      client,
+		logger:      logger,
 		defaultTags: defaultTags,
 		c:           make(chan func(), metricChannelBuffSize),
 	}
@@ -60,12 +63,11 @@ func (d *DataDogReporter) Run(stop <-chan struct{}) {
 		case f := <-d.c:
 			f()
 		case <-stop:
+			for f := range d.c { // drain the channel
+				f()
+			}
 			return
 		}
-	}
-
-	for f := range d.c { // drain the channel
-		f()
 	}
 }
 
@@ -157,6 +159,7 @@ func (d *DataDogReporter) enqueue(f func()) {
 	select {
 	case d.c <- f:
 	default:
+		d.logger.Error("buffered channel full -- discarding metric")
 	}
 }
 

@@ -71,7 +71,7 @@ func main() {
 		}
 
 		ddStatsd.Namespace = "guardian."
-		ddReporter := guardian.NewDataDogReporter(ddStatsd, *dogstatsdTags)
+		ddReporter := guardian.NewDataDogReporter(ddStatsd, *dogstatsdTags, logger.WithField("context", "datadog-metric-reporter"))
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
