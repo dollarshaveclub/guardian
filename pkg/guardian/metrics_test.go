@@ -19,7 +19,14 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	}
 
 	defaultTags := []string{"default1:tag1", "default2:tag2"}
-	reporter := DataDogReporter{Client: client, DefaultTags: defaultTags}
+	reporter := NewDataDogReporter(client, defaultTags, TestingLogger)
+
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go func() {
+		reporter.Run(stop)
+	}()
 
 	req := Request{}
 
