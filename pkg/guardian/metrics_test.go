@@ -67,6 +67,35 @@ func contains(x []tag, y []string) bool {
 	return true
 }
 
+func TestDatadogReportsAllDurations(t *testing.T) {
+
+	writer := &testStatsdWriter{}
+	client, err := statsd.NewWithWriter(writer)
+	if err != nil {
+		t.Fatalf("got err: %v", err)
+	}
+
+	defaultTags := []string{"default1:tag1", "default2:tag2"}
+	reporter := NewDataDogReporter(client, defaultTags, TestingLogger)
+
+	stop := make(chan struct{})
+	defer close(stop)
+
+	go func() {
+		reporter.Run(stop)
+	}()
+
+	reporter.Duration(Request{Authority: "one"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "two"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "three"}, false, false, time.Second)
+	reporter.Duration(Request{Authority: "four"}, false, false, time.Second)
+	time.Sleep(time.Second) // wait for stats to send
+
+	if len(writer.received) != 4 {
+		t.Fatalf("expected: %v, received: %v", 4, len(writer.received))
+	}
+}
+
 type tag string
 
 func (t tag) Name() string {
