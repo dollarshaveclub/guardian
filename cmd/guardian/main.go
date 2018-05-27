@@ -37,6 +37,7 @@ func main() {
 	confUpdateInterval := kingpin.Flag("conf-update-interval", "interval to fetch new conf from redis").Short('i').Default("10s").OverrideDefaultFromEnvar("GUARDIAN_FLAG_CONF_UPDATE_INTERVAL").Duration()
 	dogstatsdTags := kingpin.Flag("dogstatsd-tag", "tag to add to dogstatsd metrics").Strings()
 	defaultWhitelist := kingpin.Flag("whitelist-cidr", "default cidr to whitelist until sync with redis occurs").Strings()
+	defaultBlacklist := kingpin.Flag("blacklist-cidr", "default cidr to blacklist until sync with redis occurs").Strings()
 	profilerEnabled := kingpin.Flag("profiler-enabled", "GCP Stackdriver Profiler enabled").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_ENABLED").Bool()
 	profilerProjectID := kingpin.Flag("profiler-project-id", "GCP Stackdriver Profiler project ID").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_PROJECT_ID").String()
 	profilerServiceName := kingpin.Flag("profiler-service-name", "GCP Stackdriver Profiler service name").Default("guardian").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_SERVICE_NAME").String()
@@ -92,7 +93,7 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
 	logger.Infof("starting cache update for conf store")
 
 	wg.Add(1)
@@ -102,6 +103,8 @@ func main() {
 	}()
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
+
+	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
 
 	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"), reporter)
 	wg.Add(1)
@@ -113,8 +116,9 @@ func main() {
 	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), reporter)
 
 	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
+	condBlacklistFunc := guardian.CondStopOnBlacklistFunc(blacklister)
 	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
-	condFuncChain := guardian.CondChain(condWhitelistFunc, condRatelimitFunc)
+	condFuncChain := guardian.CondChain(condWhitelistFunc, condBlacklistFunc, condRatelimitFunc)
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)

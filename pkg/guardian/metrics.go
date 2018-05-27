@@ -11,6 +11,7 @@ import (
 
 const durationMetricName = "request.duration"
 const reqWhitelistMetricName = "request.whitelist"
+const reqBlacklisttMetricName = "request.blacklist"
 const reqRateLimitMetricName = "request.rate_limit"
 const redisCounterIncrMetricName = "redis_counter.incr"
 const redisCounterPrunedMetricName = "redis_counter.cache.pruned"
@@ -20,9 +21,11 @@ const rateLimitCountMetricName = "rate_limit.count"
 const rateLimitDurationMetricName = "rate_limit.duration"
 const rateLimitEnabledMetricName = "rate_limit.enabled"
 const whitelistCountMetricName = "whitelist.count"
+const blacklistCountMetricName = "blacklist.count"
 const reportOnlyEnabledMetricName = "report_only.enabled"
 const blockedKey = "blocked"
 const whitelistedKey = "whitelisted"
+const blacklistedKey = "blacklisted"
 const ratelimitedKey = "ratelimited"
 const errorKey = "error"
 const authorityKey = "authority"
@@ -33,11 +36,13 @@ const metricChannelBuffSize = 1000000
 type MetricReporter interface {
 	Duration(request Request, blocked bool, errorOccurred bool, duration time.Duration)
 	HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
+	HandledBlacklist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
 	CurrentLimit(limit Limit)
 	CurrentWhitelist(whitelist []net.IPNet)
+	CurrentBlacklist(blacklist []net.IPNet)
 	CurrentReportOnlyMode(reportOnly bool)
 }
 
@@ -94,6 +99,17 @@ func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, er
 	d.enqueue(f)
 }
 
+func (d *DataDogReporter) HandledBlacklist(request Request, blacklisted bool, errorOccurred bool, duration time.Duration) {
+	f := func() {
+		authorityTag := authorityKey + ":" + request.Authority
+		blacklistedTag := blacklistedKey + ":" + strconv.FormatBool(blacklisted)
+		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
+		tags := append([]string{authorityTag, blacklistedTag, errorTag}, d.defaultTags...)
+		d.client.TimeInMilliseconds(reqBlacklisttMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	}
+	d.enqueue(f)
+}
+
 func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 	f := func() {
 		authorityTag := authorityKey + ":" + request.Authority
@@ -144,6 +160,13 @@ func (d *DataDogReporter) CurrentWhitelist(whitelist []net.IPNet) {
 	d.enqueue(f)
 }
 
+func (d *DataDogReporter) CurrentBlacklist(blacklist []net.IPNet) {
+	f := func() {
+		d.client.Gauge(blacklistCountMetricName, float64(len(blacklist)), d.defaultTags, 1)
+	}
+	d.enqueue(f)
+}
+
 func (d *DataDogReporter) CurrentReportOnlyMode(reportOnly bool) {
 	f := func() {
 		enabled := 0
@@ -171,6 +194,10 @@ func (n NullReporter) Duration(request Request, blocked bool, errorOccured bool,
 func (n NullReporter) HandledWhitelist(request Request, whitelisted bool, errorOccured bool, duration time.Duration) {
 }
 
+func (n NullReporter) HandledBlacklist(request Request, blacklisted bool, errorOccurred bool, duration time.Duration) {
+
+}
+
 func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorOccured bool, duration time.Duration) {
 }
 
@@ -183,6 +210,9 @@ func (n NullReporter) CurrentLimit(limit Limit) {
 }
 
 func (n NullReporter) CurrentWhitelist(whitelist []net.IPNet) {
+}
+
+func (n NullReporter) CurrentBlacklist(blacklist []net.IPNet) {
 }
 
 func (n NullReporter) CurrentReportOnlyMode(reportOnly bool) {

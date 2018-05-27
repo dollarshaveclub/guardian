@@ -12,18 +12,23 @@ import (
 )
 
 const redisIPWhitelistKey = "guardian_conf:whitelist"
+const redisIPBlacklistKey = "guardian_conf:blacklist"
 const redisLimitCountKey = "guardian_conf:limit_count"
 const redisLimitDurationKey = "guardian_conf:limit_duration"
 const redisLimitEnabledKey = "guardian_conf:limit_enabled"
 const redisReportOnlyKey = "guardian_conf:reportOnly"
 
 // NewRedisConfStore creates a new RedisConfStore
-func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
+func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
 	if defaultWhitelist == nil {
 		defaultWhitelist = []net.IPNet{}
 	}
 
-	defaultConf := conf{whitelist: defaultWhitelist, limit: defaultLimit, reportOnly: defaultReportOnly}
+	if defaultBlacklist == nil {
+		defaultBlacklist = []net.IPNet{}
+	}
+
+	defaultConf := conf{whitelist: defaultWhitelist, blacklist: defaultBlacklist, limit: defaultLimit, reportOnly: defaultReportOnly}
 	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}}
 }
 
@@ -36,6 +41,7 @@ type RedisConfStore struct {
 
 type conf struct {
 	whitelist  []net.IPNet
+	blacklist  []net.IPNet
 	limit      Limit
 	reportOnly bool
 }
@@ -60,6 +66,22 @@ func (rs *RedisConfStore) FetchWhitelist() ([]net.IPNet, error) {
 	return c.whitelist, nil
 }
 
+func (rs *RedisConfStore) GetBlacklist() []net.IPNet {
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+
+	return append([]net.IPNet{}, rs.conf.blacklist...)
+}
+
+func (rs *RedisConfStore) FetchBlacklist() ([]net.IPNet, error) {
+	c := rs.pipelinedFetchConf()
+	if c.blacklist == nil {
+		return nil, fmt.Errorf("error fetching blacklist")
+	}
+
+	return c.blacklist, nil
+}
+
 func (rs *RedisConfStore) AddWhitelistCidrs(cidrs []net.IPNet) error {
 	key := redisIPWhitelistKey
 	for _, cidr := range cidrs {
@@ -77,6 +99,36 @@ func (rs *RedisConfStore) AddWhitelistCidrs(cidrs []net.IPNet) error {
 
 func (rs *RedisConfStore) RemoveWhitelistCidrs(cidrs []net.IPNet) error {
 	key := redisIPWhitelistKey
+	for _, cidr := range cidrs {
+		field := cidr.String()
+		rs.logger.Debugf("Sending HDel for key %v field %v", key, field)
+		res := rs.redis.HDel(key, field, "true") // value doesn't matter
+
+		if res.Err() != nil {
+			return res.Err()
+		}
+	}
+
+	return nil
+}
+
+func (rs *RedisConfStore) AddBlacklistCidrs(cidrs []net.IPNet) error {
+	key := redisIPBlacklistKey
+	for _, cidr := range cidrs {
+		field := cidr.String()
+		rs.logger.Debugf("Sending HSet for key %v field %v", key, field)
+		res := rs.redis.HSet(key, field, "true") // value doesn't matter
+
+		if res.Err() != nil {
+			return res.Err()
+		}
+	}
+
+	return nil
+}
+
+func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
+	key := redisIPBlacklistKey
 	for _, cidr := range cidrs {
 		field := cidr.String()
 		rs.logger.Debugf("Sending HDel for key %v field %v", key, field)
@@ -169,6 +221,10 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.whitelist = fetched.whitelist
 	}
 
+	if fetched.blacklist != nil {
+		rs.conf.blacklist = fetched.blacklist
+	}
+
 	if fetched.limitCount != nil &&
 		fetched.limitDuration != nil &&
 		fetched.limitEnabled != nil {
@@ -186,6 +242,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 
 type fetchConf struct {
 	whitelist     []net.IPNet
+	blacklist     []net.IPNet
 	limitCount    *uint64
 	limitDuration *time.Duration
 	limitEnabled  *bool
@@ -195,6 +252,7 @@ type fetchConf struct {
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	newConf := fetchConf{}
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPWhitelistKey)
+	rs.logger.Debugf("Sending HKEYS for key %v", redisIPBlacklistKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitCountKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitDurationKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitEnabledKey)
@@ -202,6 +260,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 
 	pipe := rs.redis.Pipeline()
 	whitelistKeysCmd := pipe.HKeys(redisIPWhitelistKey)
+	blacklistKeysCmd := pipe.HKeys(redisIPBlacklistKey)
 	limitCountCmd := pipe.Get(redisLimitCountKey)
 	limitDurationCmd := pipe.Get(redisLimitDurationKey)
 	limitEnabledCmd := pipe.Get(redisLimitEnabledKey)
@@ -210,6 +269,12 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 
 	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
 		newConf.whitelist = IPNetsFromStrings(whitelistStrs, rs.logger)
+	} else {
+		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
+	}
+
+	if blacklistStrs, err := blacklistKeysCmd.Result(); err == nil {
+		newConf.blacklist = IPNetsFromStrings(blacklistStrs, rs.logger)
 	} else {
 		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
 	}

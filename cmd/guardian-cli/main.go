@@ -17,6 +17,7 @@ func main() {
 	logLevel := app.Flag("log-level", "log level.").Short('l').Default("error").OverrideDefaultFromEnvar("LOG_LEVEL").String()
 	redisAddress := app.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").Required().String()
 
+	// Whitelisting
 	addWhitelistCmd := app.Command("add-whitelist", "Add CIDRs to the IP Whitelist")
 	addCidrStrings := addWhitelistCmd.Arg("cidr", "CIDR").Required().Strings()
 
@@ -25,6 +26,16 @@ func main() {
 
 	getWhitelistCmd := app.Command("get-whitelist", "Get whitelisted CIDRs")
 
+	// Blacklisting
+	addBlacklistCmd := app.Command("add-blacklist", "Add CIDRs to the IP Blacklist")
+	addBlacklistCidrStrings := addBlacklistCmd.Arg("cidr", "CIDR").Required().Strings()
+
+	removeBlacklistCmd := app.Command("remove-blacklist", "Remove CIDRs from the IP Blacklist")
+	removeBlacklistCidrStrings := removeBlacklistCmd.Arg("cidr", "CIDR").Required().Strings()
+
+	getBlacklistCmd := app.Command("get-blacklist", "Get blacklisted CIDRs")
+
+	// Rate limiting
 	setLimitCmd := app.Command("set-limit", "Sets the IP rate limit")
 	limitCount := setLimitCmd.Arg("count", "limit count").Required().Uint64()
 	limitDuration := setLimitCmd.Arg("duration", "limit duration").Required().Duration()
@@ -32,6 +43,7 @@ func main() {
 
 	getLimitCmd := app.Command("get-limit", "Gets the IP rate limit")
 
+	// Report Only
 	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
 	reportOnly := setReportOnlyCmd.Arg("report-only", "report only enabled").Required().Bool()
 
@@ -41,7 +53,7 @@ func main() {
 	redisOpts := &redis.Options{Addr: *redisAddress}
 	redis := redis.NewClient(redisOpts)
 	logger := logrus.StandardLogger()
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.Limit{}, false, logger)
+	redisConfStore := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, logger)
 
 	level, err := logrus.ParseLevel(*logLevel)
 	if err != nil {
@@ -71,6 +83,29 @@ func main() {
 		}
 
 		for _, cidr := range whitelist {
+			fmt.Println(cidr.String())
+		}
+	case addBlacklistCmd.FullCommand():
+		err := addBlacklist(redisConfStore, *addBlacklistCidrStrings, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error adding CIDRS: %v\n", err)
+			os.Exit(1)
+		}
+
+	case removeBlacklistCmd.FullCommand():
+		err := removeBlacklist(redisConfStore, *removeBlacklistCidrStrings, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error removing CIDRS: %v\n", err)
+			os.Exit(1)
+		}
+	case getBlacklistCmd.FullCommand():
+		blacklist, err := getBlacklist(redisConfStore, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error listing CIDRS: %v\n", err)
+			os.Exit(1)
+		}
+
+		for _, cidr := range blacklist {
 			fmt.Println(cidr.String())
 		}
 	case setLimitCmd.FullCommand():
@@ -149,6 +184,53 @@ func getWhitelist(store *guardian.RedisConfStore, logger logrus.FieldLogger) ([]
 	logger.Debugf("Fetched CIDRs from Redis: %v", whitelist)
 
 	return whitelist, nil
+}
+
+func addBlacklist(store *guardian.RedisConfStore, cidrStrings []string, logger logrus.FieldLogger) error {
+	logger.Debugf("Converting CIDR strings: %v", cidrStrings)
+	cidrs, err := convertCIDRStrings(cidrStrings)
+	if err != nil {
+		return errors.Wrap(err, "error parsing cidr")
+	}
+	logger.Debugf("Converted CIDR strings to CIDRs: %v", cidrs)
+
+	logger.Debugf("Adding CIDRs to Redis")
+	err = store.AddBlacklistCidrs(cidrs)
+	if err != nil {
+		return errors.Wrap(err, "error adding cidrs to redis")
+	}
+	logger.Debugf("Added CIDRs to Redis")
+
+	return nil
+}
+
+func removeBlacklist(store *guardian.RedisConfStore, cidrStrings []string, logger logrus.FieldLogger) error {
+	logger.Debugf("Converting CIDR strings: %v", cidrStrings)
+	cidrs, err := convertCIDRStrings(cidrStrings)
+	if err != nil {
+		return errors.Wrap(err, "error parsing cidr")
+	}
+	logger.Debugf("Converted CIDR strings to CIDRs: %v", cidrs)
+
+	logger.Debugf("Removing CIDRs from Redis")
+	err = store.RemoveBlacklistCidrs(cidrs)
+	if err != nil {
+		return errors.Wrap(err, "error removing cidrs from redis")
+	}
+	logger.Debugf("Removed CIDRs from Redis")
+
+	return nil
+}
+
+func getBlacklist(store *guardian.RedisConfStore, logger logrus.FieldLogger) ([]net.IPNet, error) {
+	logger.Debugf("Fetching CIDRs from Redis")
+	blacklist, err := store.FetchBlacklist()
+	if err != nil {
+		return nil, errors.Wrap(err, "error fetching blacklist")
+	}
+	logger.Debugf("Fetched CIDRs from Redis: %v", blacklist)
+
+	return blacklist, nil
 }
 
 func convertCIDRStrings(cidrStrings []string) ([]net.IPNet, error) {
