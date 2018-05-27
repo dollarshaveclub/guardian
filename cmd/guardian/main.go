@@ -25,7 +25,8 @@ import (
 func main() {
 
 	logLevel := kingpin.Flag("log-level", "log level.").Short('l').Default("warn").OverrideDefaultFromEnvar("LOG_LEVEL").String()
-	address := kingpin.Flag("address", "host:port.").Short('a').Default("0.0.0.0:3000").OverrideDefaultFromEnvar("ADDRESS").String()
+	address := kingpin.Flag("address", "network address to listen on.").Short('a').Default("0.0.0.0:3000").OverrideDefaultFromEnvar("ADDRESS").String()
+	network := kingpin.Flag("network", "network to listen on. Must be \"tcp\", \"tcp4\", \"tcp6\", \"unix\" or \"unixpacket\".").Short('n').Default("tcp").OverrideDefaultFromEnvar("NETWORK").String()
 	redisAddress := kingpin.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").String()
 	redisPoolSize := kingpin.Flag("redis-pool-size", "redis connection pool size").Short('p').Default("20").OverrideDefaultFromEnvar("REDIS_POOL_SIZE").Int()
 	dogstatsdAddress := kingpin.Flag("dogstatsd-address", "host:port.").Short('d').OverrideDefaultFromEnvar("DOGSTATSD_ADDRESS").String()
@@ -50,9 +51,9 @@ func main() {
 	logger.Warnf("setting log level to %v", level)
 	logger.SetLevel(level)
 
-	l, err := net.Listen("tcp", *address)
+	l, err := net.Listen(*network, *address)
 	if err != nil {
-		logger.WithError(err).Errorf("could not listen on %s", *address)
+		logger.WithError(err).Errorf("could not listen on network %s address %s", *network, *address)
 		os.Exit(1)
 	}
 
