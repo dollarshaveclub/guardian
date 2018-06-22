@@ -38,6 +38,15 @@ func Chain(rf ...RequestBlockerFunc) RequestBlockerFunc {
 // CondRequestBlockerFunc is the same as a RequestBlockerFunc with the added ability to indicate that the evaluation of a chain should stop
 type CondRequestBlockerFunc func(context.Context, Request) (stop, blocked bool, remaining uint32, err error)
 
+// DefaultCondChain is the default condiation chain used by Guardian. This performs the following checks when
+// processing a request: whitelist, blacklist, rate limit.
+func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, rateLimiter *IPRateLimiter) RequestBlockerFunc {
+	condWhitelistFunc := CondStopOnWhitelistFunc(whitelister)
+	condBlacklistFunc := CondStopOnBlacklistFunc(blacklister)
+	condRatelimitFunc := CondStopOnBlockOrError(rateLimiter.Limit)
+	return CondChain(condWhitelistFunc, condBlacklistFunc, condRatelimitFunc)
+}
+
 // CondChain chains a series of CondRequestBlockerFunc running each until one indicates the chain should stop processing, returning that functions results
 func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 	chain := func(c context.Context, r Request) (bool, uint32, error) {

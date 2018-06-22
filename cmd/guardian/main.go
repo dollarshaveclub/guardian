@@ -102,10 +102,6 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
-
-	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
-
 	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"), reporter)
 	wg.Add(1)
 	go func() {
@@ -113,12 +109,10 @@ func main() {
 		redisCounter.Run(30*time.Second, stop)
 	}()
 
+	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
+	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
 	rateLimiter := guardian.NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), reporter)
-
-	condWhitelistFunc := guardian.CondStopOnWhitelistFunc(whitelister)
-	condBlacklistFunc := guardian.CondStopOnBlacklistFunc(blacklister)
-	condRatelimitFunc := guardian.CondStopOnBlockOrError(rateLimiter.Limit)
-	condFuncChain := guardian.CondChain(condWhitelistFunc, condBlacklistFunc, condRatelimitFunc)
+	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, rateLimiter)
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)

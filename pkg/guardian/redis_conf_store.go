@@ -212,7 +212,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 
 	rs.logger.Debug("Fetching conf")
 	fetched := rs.pipelinedFetchConf()
-	rs.logger.Debug("Fetched conf: %#v", fetched)
+	rs.logger.Debugf("Fetched conf: %#v", fetched)
 
 	rs.conf.Lock()
 	defer rs.conf.Unlock()
