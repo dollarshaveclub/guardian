@@ -13,8 +13,8 @@ cli:
 
 .PHONY: e2e
 e2e: cli
-	@./e2e/run-e2e.sh
+	@./e2e/scripts/run-e2e.sh
 
 .PHONY: e2e-circleci
 e2e-circleci: 
-	@./e2e/circleci-run-e2e.sh
+	@./e2e/scripts/circleci-run-e2e.sh

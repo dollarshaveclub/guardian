@@ -29,20 +29,10 @@ func TestRateLimit(t *testing.T) {
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 
-	count200 := 0
-	count429 := 0
 	for i := 0; i < 10; i++ {
 		time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 		res := GET(t, "192.168.1.234", "/")
 		res.Body.Close()
-
-		if res.StatusCode == 200 {
-			count200++
-		}
-
-		if res.StatusCode == 429 {
-			count429++
-		}
 
 		want := 200
 		if i >= config.limitCount {

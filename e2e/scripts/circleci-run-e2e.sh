@@ -7,7 +7,7 @@ echo "Building..."
 docker build . -f Dockerfile-e2e-circleci -t guardian-e2e:latest
 
 echo "Running..."
-docker run --network e2e_default guardian-e2e:latest /go/src/github.com/dollarshaveclub/guardian/e2e/circleci-e2e-runner-docker.sh
+docker run --network e2e_default guardian-e2e:latest /go/src/github.com/dollarshaveclub/guardian/e2e/scripts/circleci-e2e-runner-docker.sh
 results=$?
 
 echo "Stopping..."
