@@ -82,13 +82,13 @@ func main() {
 		reporter = ddReporter
 	}
 
+	defaultLimit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
+	logger.Infof("parsed default limit of %v", defaultLimit)
+
 	redisOpts := &redis.Options{
 		Addr:     *redisAddress,
 		PoolSize: *redisPoolSize,
 	}
-
-	defaultLimit := guardian.Limit{Count: *reqLimit, Duration: *limitDuration, Enabled: *limitEnabled}
-	logger.Infof("parsed default limit of %v", defaultLimit)
 
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
