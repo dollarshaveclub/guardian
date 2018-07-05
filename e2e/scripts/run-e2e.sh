@@ -1,13 +1,27 @@
 #!/bin/bash
 
-echo "Starting..."
-docker-compose -f e2e/docker-compose.yml up -d > /dev/null 2>&1
+echo "Starting async guardian..."
+docker-compose -f e2e/docker-compose-async.yml up -d --build --force-recreate > /dev/null 2>&1
+sleep 30 # wait for guardian to finish starting up
 
 echo "Running..."
-go test ./e2e/
+GOCACHE=off go test ./e2e/
 results=$?
 
-echo "Stopping..."
-docker-compose -f e2e/docker-compose.yml stop > /dev/null 2>&1
+echo "Stopping async guardian..."
+docker-compose -f e2e/docker-compose-async.yml stop > /dev/null 2>&1
 
-if [ "$results" != 0 ] ; then false; fi
+if [ "$results" != 0 ] ; then exit 1; fi
+
+echo "Starting sync guardian..."
+docker-compose -f e2e/docker-compose-sync.yml up -d --build --force-recreate > /dev/null 2>&1
+sleep 30 # wait for guardian to finish starting up
+
+echo "Running..."
+GOCACHE=off SYNC=true go test ./e2e/
+results=$?
+
+echo "Stopping sync guardian..."
+docker-compose -f e2e/docker-compose-sync.yml stop > /dev/null 2>&1
+
+if [ "$results" != 0 ] ; then exit 1; fi
