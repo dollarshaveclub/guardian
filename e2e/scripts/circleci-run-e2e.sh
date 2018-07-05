@@ -15,7 +15,7 @@ results=$?
 echo "Stopping async guardian..."
 docker-compose -f e2e/docker-compose-async.yml stop > /dev/null 2>&1
 
-f [ "$results" != 0 ] ; then exit 1; fi
+if [ "$results" != 0 ] ; then exit 1; fi
 
 echo "Starting sync guardian..."
 docker-compose -f e2e/docker-compose-sync.yml up -d --build --force-recreate > /dev/null 2>&1
@@ -28,4 +28,4 @@ results=$?
 echo "Stopping sync guardian..."
 docker-compose -f e2e/docker-compose-sync.yml stop > /dev/null 2>&1
 
-f [ "$results" != 0 ] ; then exit 1; fi
+if [ "$results" != 0 ] ; then exit 1; fi
