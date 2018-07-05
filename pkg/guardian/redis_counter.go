@@ -13,8 +13,8 @@ import (
 
 const limitStoreNamespace = "limit_store"
 
-func NewRedisCounter(redis *redis.Client, logger logrus.FieldLogger, reporter MetricReporter) *RedisCounter {
-	return &RedisCounter{redis: redis, logger: logger, cache: &lockingExpiringMap{m: make(map[string]item)}, reporter: reporter}
+func NewRedisCounter(redis *redis.Client, synchronous bool, logger logrus.FieldLogger, reporter MetricReporter) *RedisCounter {
+	return &RedisCounter{redis: redis, synchronous: synchronous, logger: logger, cache: &lockingExpiringMap{m: make(map[string]item)}, reporter: reporter}
 }
 
 type item struct {
@@ -32,10 +32,11 @@ type lockingExpiringMap struct {
 // TODO: fetch the current limit configuration from redis instead of using
 // a static one
 type RedisCounter struct {
-	redis    *redis.Client
-	logger   logrus.FieldLogger
-	reporter MetricReporter
-	cache    *lockingExpiringMap
+	redis       *redis.Client
+	synchronous bool
+	logger      logrus.FieldLogger
+	reporter    MetricReporter
+	cache       *lockingExpiringMap
 }
 
 func (rs *RedisCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
@@ -52,29 +53,38 @@ func (rs *RedisCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 }
 
 func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error) {
-	runIncrFunc := func() {
+	runIncrFunc := func() (item, error) {
 		count, err := rs.doIncr(context, key, incrBy, expireIn)
 		if err != nil {
 			rs.logger.WithError(err).Error("error incrementing")
-			return
+			return item{}, err
 		}
 
 		item := item{val: count, blocked: count > maxBeforeBlock, expireAt: time.Now().Add(expireIn)}
 		rs.cache.Lock()
 		rs.cache.m[key] = item
 		rs.cache.Unlock()
+
+		return item, nil
 	}
 
 	rs.cache.RLock()
-	curr := rs.cache.m[key]
+	existing := rs.cache.m[key]
 	rs.cache.RUnlock()
 
-	if !curr.blocked {
-		go runIncrFunc()
+	if existing.blocked {
+		return existing.val + uint64(incrBy), existing.blocked, nil
 	}
 
-	count := curr.val + uint64(incrBy)
-	return count, curr.blocked || count > maxBeforeBlock, nil
+	if !rs.synchronous {
+		go runIncrFunc()
+
+		count := existing.val + uint64(incrBy)
+		return count, count > maxBeforeBlock, nil
+	}
+
+	curr, err := runIncrFunc()
+	return curr.val, curr.blocked, err
 }
 
 func (rs *RedisCounter) pruneCache(olderThan time.Time) {

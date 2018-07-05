@@ -17,7 +17,7 @@ func newTestRedisCounter(t *testing.T) (*RedisCounter, *miniredis.Miniredis) {
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisCounter(redis, TestingLogger, NullReporter{}), s
+	return NewRedisCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 
 func TestRedisCounterIncr(t *testing.T) {
