@@ -1,0 +1,28 @@
+version: '3'
+services:
+  envoy: 
+    build: envoy/.
+    ports: 
+    - "8080:8080"
+  guardian:
+    build: ../.
+    ports:
+    - "3000:3000"
+    - "6060:6060"
+    environment:
+      GUARDIAN_FLAG_REDIS_ADDRESS: "redis:6379"
+      GUARDIAN_FLAG_LOG_LEVEL: "debug"
+      GUARDIAN_FLAG_CONF_UPDATE_INTERVAL: "1s"
+      GUARDIAN_FLAG_SYNCHRONOUS: "false"
+    depends_on:
+    - redis
+  upstream:
+    image: hashicorp/http-echo
+    ports:
+    - "5678:5678"
+    command: -text=echo
+  redis:
+    image: redis
+    ports:
+    - "6379:6379"
+    command: redis-server --save ""

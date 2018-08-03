@@ -41,6 +41,7 @@ func main() {
 	profilerEnabled := kingpin.Flag("profiler-enabled", "GCP Stackdriver Profiler enabled").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_ENABLED").Bool()
 	profilerProjectID := kingpin.Flag("profiler-project-id", "GCP Stackdriver Profiler project ID").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_PROJECT_ID").String()
 	profilerServiceName := kingpin.Flag("profiler-service-name", "GCP Stackdriver Profiler service name").Default("guardian").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_SERVICE_NAME").String()
+	synchronous := kingpin.Flag("synchronous", "synchronously enforce ratelimit").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SYNCHRONOUS").Bool()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -102,7 +103,7 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	redisCounter := guardian.NewRedisCounter(redis, logger.WithField("context", "redis-counter"), reporter)
+	redisCounter := guardian.NewRedisCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

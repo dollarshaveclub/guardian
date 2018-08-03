@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/build"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,8 @@ var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
 var envoyAddr = flag.String("envoy-addr", "localhost:8080", "envoy address")
 
 func TestRateLimit(t *testing.T) {
+	resetRedis(*redisAddr)
+
 	config := guardianConfig{
 		whitelist:     []string{},
 		blacklist:     []string{},
@@ -30,7 +33,10 @@ func TestRateLimit(t *testing.T) {
 	applyGuardianConfig(t, *redisAddr, config)
 
 	for i := 0; i < 10; i++ {
-		time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+		if len(os.Getenv("SYNC")) == 0 {
+			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+		}
+
 		res := GET(t, "192.168.1.234", "/")
 		res.Body.Close()
 

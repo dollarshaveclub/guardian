@@ -24,7 +24,7 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	stop := make(chan struct{})
 	redis := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, logger.WithField("context", "redis-conf-provider"))
-	redisCounter := NewRedisCounter(redis, logger.WithField("context", "redis-counter"), NullReporter{})
+	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
