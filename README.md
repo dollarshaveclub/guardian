@@ -27,7 +27,7 @@ guardian-cli --redis-address localhost:6379 set-limit 3 1m true # 3 requests per
 guardian-cli --redis-address localhost:6379 set-report-only false # don't just report, actually limit
 ```
 
-To see rate limiting it in action, use `curl`
+To see rate limiting in action, use `curl`
 
 ```
 curl -v localhost:8080/
