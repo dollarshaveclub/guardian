@@ -77,7 +77,7 @@ func TestCondStopOnWhitelist(t *testing.T) {
 	expectedErr := error(nil)
 	expectedStop := true
 	expectedBlock := false
-	expectedRemaining := RequestsRemainingMax
+	expectedRemaining := uint32(RequestsRemainingMax)
 
 	if err != expectedErr {
 		t.Fatalf("expected: %v received: %v", expectedErr, err)
