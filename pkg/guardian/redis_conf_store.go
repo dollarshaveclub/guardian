@@ -259,6 +259,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	rs.logger.Debugf("Sending GET for key %v", redisReportOnlyKey)
 
 	pipe := rs.redis.Pipeline()
+	defer pipe.Close()
 	whitelistKeysCmd := pipe.HKeys(redisIPWhitelistKey)
 	blacklistKeysCmd := pipe.HKeys(redisIPBlacklistKey)
 	limitCountCmd := pipe.Get(redisLimitCountKey)

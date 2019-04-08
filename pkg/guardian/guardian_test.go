@@ -23,6 +23,9 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 
 	stop := make(chan struct{})
 	redis := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	if res := redis.Ping(); res.Err() != nil {
+		t.Fatalf("error pinging redis: %v", res.Err())
+	}
 	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, logger.WithField("context", "redis-conf-provider"))
 	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
@@ -109,6 +112,7 @@ func TestBasicFunctionality(t *testing.T) {
 	}()
 	defer func() {
 		close(stop)
+		time.Sleep(50 * time.Millisecond) // give the redisConfStore.RunSync() goroutine time to exit
 	}()
 
 	whitelistedIP := "10.10.10.10"
@@ -168,8 +172,8 @@ func TestBasicFunctionality(t *testing.T) {
 			want = ratelimit.RateLimitResponse_OVER_LIMIT
 		}
 
-		if res.GetOverallCode() != want {
-			t.Fatalf("want %v, got %v, iteration %v", want, res.GetOverallCode(), i)
+		if res.OverallCode != want {
+			t.Fatalf("want %v, got %v, iteration %v", want, res.OverallCode, i)
 		}
 	}
 }

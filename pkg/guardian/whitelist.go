@@ -57,11 +57,11 @@ type IPWhitelister struct {
 }
 
 func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (bool, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 	whitelisted := false
 	errorOccurred := false
 	defer func() {
-		w.reporter.HandledWhitelist(req, whitelisted, errorOccurred, time.Now().Sub(start))
+		w.reporter.HandledWhitelist(req, whitelisted, errorOccurred, time.Since(start))
 	}()
 
 	w.logger.Debugf("checking whitelist for request %#v", req)
