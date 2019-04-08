@@ -2,6 +2,12 @@ COMMIT   ?= `git rev-parse HEAD`
 REPO    ?= github.com/dollarshaveclub/guardian
 IMAGE   ?= quay.io/dollarshaveclub/guardian
 
+all: bin
+
+.PHONY: bin
+bin:
+	go install -ldflags "-X ${REPO}/internal/version.CommitSHA=${COMMIT}" ${REPO}/cmd/guardian
+
 .PHONY: docker
 docker:
 	docker build . -t ${IMAGE}:${COMMIT} --build-arg COMMIT=${COMMIT}
