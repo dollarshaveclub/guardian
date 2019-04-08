@@ -152,7 +152,7 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
-	slot := SlotKey(req.RemoteAddress, time.Now().UTC(), limit.Duration)
+	slot := SlotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
 	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
