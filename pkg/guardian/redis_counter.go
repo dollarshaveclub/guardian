@@ -44,7 +44,7 @@ func (rs *RedisCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 	for {
 		select {
 		case <-ticker.C:
-			rs.pruneCache(time.Now())
+			rs.pruneCache(time.Now().UTC())
 		case <-stop:
 			ticker.Stop()
 			return
@@ -60,7 +60,7 @@ func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, m
 			return item{}, err
 		}
 
-		item := item{val: count, blocked: count > maxBeforeBlock, expireAt: time.Now().Add(expireIn)}
+		item := item{val: count, blocked: count > maxBeforeBlock, expireAt: time.Now().UTC().Add(expireIn)}
 		rs.cache.Lock()
 		rs.cache.m[key] = item
 		rs.cache.Unlock()
@@ -88,11 +88,11 @@ func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, m
 }
 
 func (rs *RedisCounter) pruneCache(olderThan time.Time) {
-	start := time.Now()
+	start := time.Now().UTC()
 	cacheSize := 0
 	pruned := 0
 	defer func() {
-		rs.reporter.RedisCounterPruned(time.Now().Sub(start), float64(cacheSize), float64(pruned))
+		rs.reporter.RedisCounterPruned(time.Since(start), float64(cacheSize), float64(pruned))
 	}()
 
 	rs.cache.Lock()
@@ -108,10 +108,10 @@ func (rs *RedisCounter) pruneCache(olderThan time.Time) {
 }
 
 func (rs *RedisCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
-	start := time.Now()
-	err := error(nil)
+	start := time.Now().UTC()
+	var err error
 	defer func() {
-		rs.reporter.RedisCounterIncr(time.Now().Sub(start), err != nil)
+		rs.reporter.RedisCounterIncr(time.Since(start), err != nil)
 	}()
 
 	key = NamespacedKey(limitStoreNamespace, key)
@@ -119,6 +119,7 @@ func (rs *RedisCounter) doIncr(context context.Context, key string, incrBy uint,
 	rs.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())
 
 	pipe := rs.redis.Pipeline()
+	defer pipe.Close()
 	incr := pipe.IncrBy(key, int64(incrBy))
 	expire := pipe.Expire(key, expireIn)
 	_, err = pipe.Exec()
@@ -132,7 +133,7 @@ func (rs *RedisCounter) doIncr(context context.Context, key string, incrBy uint,
 	count := uint64(incr.Val())
 	expireSet := expire.Val()
 
-	if expireSet == false {
+	if !expireSet {
 		err = fmt.Errorf("expire timeout not set, key does not exist")
 		rs.logger.WithError(err).Error("error executing pipeline")
 		return count, err
