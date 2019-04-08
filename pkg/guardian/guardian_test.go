@@ -29,7 +29,13 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
 	blacklister := NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), NullReporter{})
-	rateLimiter := NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), NullReporter{})
+	rateLimiter := &GenericRateLimiter{
+		KeyFunc:  IPRateLimiterKeyFunc,
+		Conf:     redisConfStore,
+		Counter:  redisCounter,
+		Logger:   logger.WithField("context", "ip-rate-limiter"),
+		Reporter: NullReporter{},
+	}
 
 	condFuncChain := DefaultCondChain(whitelister, blacklister, rateLimiter)
 	server := NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), NullReporter{})
