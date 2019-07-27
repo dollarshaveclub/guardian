@@ -107,12 +107,10 @@ func TestBasicFunctionality(t *testing.T) {
 
 	logger := logrus.StandardLogger()
 	server, miniredis, redisConfStore, stop := newAcceptanceGuardianServer(t, logger)
-	defer func() {
-		miniredis.Close()
-	}()
+
 	defer func() {
 		close(stop)
-		time.Sleep(50 * time.Millisecond) // give the redisConfStore.RunSync() goroutine time to exit
+		miniredis.Close()
 	}()
 
 	whitelistedIP := "10.10.10.10"
