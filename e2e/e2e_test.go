@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,7 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dollarshaveclub/guardian/pkg/guardian"
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/go-redis/redis"
+	yaml "gopkg.in/yaml.v2"
 )
 
 var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
@@ -103,6 +108,69 @@ func TestBlacklist(t *testing.T) {
 	}
 }
 
+func TestSetRouteRateLimits(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/routeratelimitconfig.yml"
+	config := guardianConfig{
+		routeRateLimtConfigPath: configFilePath,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	getCmd := "get-route-rate-limits"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+	expectedResStr, err := ioutil.ReadFile(configFilePath)
+
+	res := guardian.RouteRateLimitConfig{}
+	expectedRes := guardian.RouteRateLimitConfig{}
+	err = yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+	err = yaml.Unmarshal(expectedResStr, &expectedRes)
+	if err != nil {
+		t.Fatalf("error unmarshaling expected result string: %v", err)
+	}
+
+	// Since the ordering of the slice returned from the cli can be different
+	// than the original config, we just want to verify that both configs contain
+	// the same entries in no particular order.
+	expectedResSet := make(map[string]guardian.Limit)
+	resSet := make(map[string]guardian.Limit)
+	for _, entry := range expectedRes.RouteRatelimits {
+		expectedResSet[entry.Route] = entry.Limit
+	}
+	for _, entry := range res.RouteRatelimits {
+		resSet[entry.Route] = entry.Limit
+	}
+
+	if !cmp.Equal(resSet, expectedResSet) {
+		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
+	}
+}
+
+func TestRemoveRouteRateLimits(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/routeratelimitconfig.yml"
+	config := guardianConfig{
+		routeRateLimtConfigPath: configFilePath,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	rmCmd := "remove-route-rate-limits"
+	runGuardianCLI(t, *redisAddr, rmCmd, "/foo/bar,/foo/baz")
+
+	getCmd := "get-route-rate-limits"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+
+	res := guardian.RouteRateLimitConfig{}
+	err := yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+
+	if len(res.RouteRatelimits) != 0 {
+		t.Fatalf("expected route rate limits to be empty after removing them")
+	}
+}
+
 func GET(t *testing.T, sourceIP string, path string) *http.Response {
 	t.Helper()
 
@@ -133,12 +201,13 @@ func resetRedis(redisAddr string) {
 }
 
 type guardianConfig struct {
-	whitelist     []string
-	blacklist     []string
-	limitCount    int
-	limitDuration time.Duration
-	limitEnabled  bool
-	reportOnly    bool
+	whitelist               []string
+	blacklist               []string
+	limitCount              int
+	limitDuration           time.Duration
+	limitEnabled            bool
+	reportOnly              bool
+	routeRateLimtConfigPath string
 }
 
 func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
@@ -156,6 +225,10 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 
 	if len(c.blacklist) > 0 {
 		runGuardianCLI(t, redisAddr, "add-blacklist", strings.Join(c.blacklist, " "))
+	}
+
+	if len(c.routeRateLimtConfigPath) > 0 {
+		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimtConfigPath)
 	}
 
 	time.Sleep(2 * time.Second)

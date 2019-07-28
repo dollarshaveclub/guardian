@@ -3,6 +3,7 @@ package guardian
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -17,6 +18,9 @@ const redisLimitCountKey = "guardian_conf:limit_count"
 const redisLimitDurationKey = "guardian_conf:limit_duration"
 const redisLimitEnabledKey = "guardian_conf:limit_enabled"
 const redisReportOnlyKey = "guardian_conf:reportOnly"
+const redisRouteRateLimitsEnabledKey = "guardian_conf:route_limits:enabled"
+const redisRouteRateLimitsDurationKey = "guardian_conf:route_limits:duration"
+const redisRouteRateLimitsCountKey = "guardian_conf:route_limits:count"
 
 // NewRedisConfStore creates a new RedisConfStore
 func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
@@ -40,14 +44,26 @@ type RedisConfStore struct {
 }
 
 type conf struct {
-	whitelist  []net.IPNet
-	blacklist  []net.IPNet
-	limit      Limit
-	reportOnly bool
+	whitelist       []net.IPNet
+	blacklist       []net.IPNet
+	limit           Limit
+	reportOnly      bool
+	routeRateLimits map[url.URL]Limit
 }
 type lockingConf struct {
 	sync.RWMutex
 	conf
+}
+
+// RouteRateLimitConfigEntry models an entry in a config file for adding route rate limits.
+type RouteRateLimitConfigEntry struct {
+	Route string `yaml:"route"`
+	Limit Limit  `yaml:"limit"`
+}
+
+// RouteRateLimitConfig models the config file for adding route rate limits.
+type RouteRateLimitConfig struct {
+	RouteRatelimits []RouteRateLimitConfigEntry `yaml:"route_rate_limits"`
 }
 
 func (rs *RedisConfStore) GetWhitelist() []net.IPNet {
@@ -140,6 +156,89 @@ func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
 	}
 
 	return nil
+}
+
+// SetRouteRateLimits will iterate through the map and set the limit for the corresponding route.
+// If the route limit is already defined in the store, it will be overwritten.
+
+func (rs *RedisConfStore) SetRouteRateLimits(routeRateLimits map[url.URL]Limit) error {
+	for url, limit := range routeRateLimits {
+		route := url.EscapedPath()
+		limitCountStr := strconv.FormatUint(limit.Count, 10)
+		limitDurationStr := limit.Duration.String()
+		limitEnabledStr := strconv.FormatBool(limit.Enabled)
+
+		pipe := rs.redis.TxPipeline()
+		pipe.HSet(redisRouteRateLimitsCountKey, route, limitCountStr)
+		pipe.HSet(redisRouteRateLimitsDurationKey, route, limitDurationStr)
+		pipe.HSet(redisRouteRateLimitsEnabledKey, route, limitEnabledStr)
+		_, err := pipe.Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveRouteRateLimits will iterate through the slice and delete the limit for each route.
+// If one of the routes has not be set in the conf store, it will be treated by Redis as an empty hash and it will effectively be a no-op.
+// This function will continue to iterate through the slice and delete the remaining routes contained in the slice.
+func (rs *RedisConfStore) RemoveRouteRateLimits(urls []url.URL) error {
+	for _, url := range urls {
+		route := url.EscapedPath()
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsCountKey, route)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsDurationKey, route)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsEnabledKey, route)
+
+		pipe := rs.redis.TxPipeline()
+		pipe.HDel(redisRouteRateLimitsCountKey, route)
+		pipe.HDel(redisRouteRateLimitsDurationKey, route)
+		pipe.HDel(redisRouteRateLimitsEnabledKey, route)
+		_, err := pipe.Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetRouteRateLimit gets a route limit from the local cache.
+func (rs *RedisConfStore) GetRouteRateLimit(url url.URL) Limit {
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+	limit, _ := rs.conf.routeRateLimits[url]
+	return limit
+}
+
+// FetchRouteRateLimit fetches the route limit from the conf store.
+func (rs *RedisConfStore) FetchRouteRateLimit(url url.URL) (Limit, error) {
+	c := rs.pipelinedFetchConf()
+	count, _ := c.routeLimitCounts[url]
+	duration, _ := c.routeLimitDurations[url]
+	enabled, _ := c.routeRateLimitsEnabled[url]
+	if count == nil || duration == nil || enabled == nil {
+		return Limit{}, fmt.Errorf("route limit not found")
+	}
+	return Limit{Count: *count, Duration: *duration, Enabled: *enabled}, nil
+}
+
+// FetchRouteRateLimits fetches all of the route rate limits from the conf store.
+func (rs *RedisConfStore) FetchRouteRateLimits() (map[url.URL]Limit, error) {
+	c := rs.pipelinedFetchConf()
+	res := make(map[url.URL]Limit)
+
+	for url, count := range c.routeLimitCounts {
+		duration, _ := c.routeLimitDurations[url]
+		enabled, _ := c.routeRateLimitsEnabled[url]
+		if duration != nil && enabled != nil && count != nil {
+			res[url] = Limit{
+				Count:    *count,
+				Duration: *duration,
+				Enabled:  *enabled,
+			}
+		}
+	}
+	return res, nil
 }
 
 func (rs *RedisConfStore) GetLimit() Limit {
@@ -237,26 +336,48 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.reportOnly = *fetched.reportOnly
 	}
 
+	for url, count := range fetched.routeLimitCounts {
+		duration, _ := fetched.routeLimitDurations[url]
+		enabled, _ := fetched.routeRateLimitsEnabled[url]
+		if duration != nil && enabled != nil && count != nil {
+			rs.conf.routeRateLimits[url] = Limit{
+				Count:    *count,
+				Duration: *duration,
+				Enabled:  *enabled,
+			}
+		}
+	}
+
 	rs.logger.Debug("Updated conf")
 }
 
 type fetchConf struct {
-	whitelist     []net.IPNet
-	blacklist     []net.IPNet
-	limitCount    *uint64
-	limitDuration *time.Duration
-	limitEnabled  *bool
-	reportOnly    *bool
+	whitelist              []net.IPNet
+	blacklist              []net.IPNet
+	limitCount             *uint64
+	limitDuration          *time.Duration
+	limitEnabled           *bool
+	reportOnly             *bool
+	routeLimitDurations    map[url.URL]*time.Duration
+	routeLimitCounts       map[url.URL]*uint64
+	routeRateLimitsEnabled map[url.URL]*bool
 }
 
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
-	newConf := fetchConf{}
+	newConf := fetchConf{
+		routeLimitDurations:    make(map[url.URL]*time.Duration),
+		routeLimitCounts:       make(map[url.URL]*uint64),
+		routeRateLimitsEnabled: make(map[url.URL]*bool),
+	}
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPWhitelistKey)
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPBlacklistKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitCountKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitDurationKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitEnabledKey)
 	rs.logger.Debugf("Sending GET for key %v", redisReportOnlyKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsCountKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsDurationKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
 
 	pipe := rs.redis.Pipeline()
 	defer pipe.Close()
@@ -266,6 +387,9 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	limitDurationCmd := pipe.Get(redisLimitDurationKey)
 	limitEnabledCmd := pipe.Get(redisLimitEnabledKey)
 	reportOnlyCmd := pipe.Get(redisReportOnlyKey)
+	routeRateLimitsCountCmd := pipe.HGetAll(redisRouteRateLimitsCountKey)
+	routeRateLimitsDurationCmd := pipe.HGetAll(redisRouteRateLimitsDurationKey)
+	routeRateLimitsEnabledCmd := pipe.HGetAll(redisRouteRateLimitsEnabledKey)
 	pipe.Exec()
 
 	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
@@ -317,7 +441,48 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else {
 		rs.logger.WithError(err).Warnf("error sending GET for key %v", redisReportOnlyKey)
+	}
 
+	if routeRateLimitsCounts, err := routeRateLimitsCountCmd.Result(); err == nil {
+		for route, countStr := range routeRateLimitsCounts {
+			parsedURL, urlParseErr := url.Parse(route)
+			count, intParseErr := strconv.ParseUint(countStr, 10, 64)
+			if urlParseErr != nil || intParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(intParseErr).Warnf("error parsing route limit duration for %v", route)
+			} else {
+				newConf.routeLimitCounts[*parsedURL] = &count
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisRouteRateLimitsCountKey)
+	}
+
+	if routeRateLimitsDurations, err := routeRateLimitsDurationCmd.Result(); err == nil {
+		for route, durationStr := range routeRateLimitsDurations {
+			parsedURL, urlParseErr := url.Parse(route)
+			duration, durationParseErr := time.ParseDuration(durationStr)
+			if urlParseErr != nil || durationParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(durationParseErr).Warnf("error parsing route limit duration for %v", route)
+			} else {
+				newConf.routeLimitDurations[*parsedURL] = &duration
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisRouteRateLimitsDurationKey)
+	}
+
+	if routeRateLimitsEnabled, err := routeRateLimitsEnabledCmd.Result(); err == nil {
+		for route, enabled := range routeRateLimitsEnabled {
+			parsedURL, urlParseErr := url.Parse(route)
+			enabled, boolParseErr := strconv.ParseBool(enabled)
+			if urlParseErr != nil || boolParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(boolParseErr).Warnf("error parsing route limit enabled for %v", route)
+			} else {
+				newConf.routeRateLimitsEnabled[*parsedURL] = &enabled
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
 	}
 
 	return newConf
