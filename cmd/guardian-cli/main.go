@@ -149,21 +149,18 @@ func main() {
 		}
 		configYaml, err := yaml.Marshal(config)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error marshaling route limit yaml: %v", err))
 		}
 		fmt.Println(string(configYaml))
 	case setRouteRateLimitsCmd.FullCommand():
 		err := setRouteRateLimits(redisConfStore, *configFilePath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error setting route rate limits: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error setting route rate limits: %v", err))
 		}
 	case removeRouteRateLimitsCmd.FullCommand():
 		err := removeRouteRateLimits(redisConfStore, *removeRouteRateLimitStrings)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error remove route rate limits: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error remove route rate limits: %v", err))
 		}
 	case setReportOnlyCmd.FullCommand():
 		err := setReportOnly(redisConfStore, *reportOnly)
@@ -341,4 +338,9 @@ func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) e
 		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
 	}
 	return store.SetRouteRateLimits(routeRateLimits)
+}
+
+func fatalerror(err error) {
+	fmt.Fprintf(os.Stderr, err.Error())
+	os.Exit(1)
 }

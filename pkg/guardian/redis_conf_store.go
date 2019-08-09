@@ -32,7 +32,13 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		defaultBlacklist = []net.IPNet{}
 	}
 
-	defaultConf := conf{whitelist: defaultWhitelist, blacklist: defaultBlacklist, limit: defaultLimit, reportOnly: defaultReportOnly}
+	defaultConf := conf{
+		whitelist:       defaultWhitelist,
+		blacklist:       defaultBlacklist,
+		limit:           defaultLimit,
+		reportOnly:      defaultReportOnly,
+		routeRateLimits: make(map[url.URL]Limit),
+	}
 	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}}
 }
 
