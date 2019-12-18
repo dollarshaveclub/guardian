@@ -28,8 +28,6 @@ const whitelistedKey = "whitelisted"
 const blacklistedKey = "blacklisted"
 const ratelimitedKey = "ratelimited"
 const errorKey = "error"
-const authorityKey = "authority"
-const ingressClassKey = "ingress_class"
 
 const metricChannelBuffSize = 1000000
 
@@ -78,10 +76,9 @@ func (d *DataDogReporter) Run(stop <-chan struct{}) {
 
 func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccurred bool, duration time.Duration) {
 	f := func() {
-		authorityTag := authorityKey + ":" + request.Authority
 		blockedTag := blockedKey + ":" + strconv.FormatBool(blocked)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-		tags := append([]string{authorityTag, blockedTag, errorTag}, d.defaultTags...)
+		tags := append([]string{blockedTag, errorTag}, d.defaultTags...)
 		d.client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), tags, 1)
 	}
 
@@ -90,10 +87,9 @@ func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccurred 
 
 func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration) {
 	f := func() {
-		authorityTag := authorityKey + ":" + request.Authority
 		whitelistedTag := whitelistedKey + ":" + strconv.FormatBool(whitelisted)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-		tags := append([]string{authorityTag, whitelistedTag, errorTag}, d.defaultTags...)
+		tags := append([]string{whitelistedTag, errorTag}, d.defaultTags...)
 		d.client.TimeInMilliseconds(reqWhitelistMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
@@ -101,10 +97,9 @@ func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, er
 
 func (d *DataDogReporter) HandledBlacklist(request Request, blacklisted bool, errorOccurred bool, duration time.Duration) {
 	f := func() {
-		authorityTag := authorityKey + ":" + request.Authority
 		blacklistedTag := blacklistedKey + ":" + strconv.FormatBool(blacklisted)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-		tags := append([]string{authorityTag, blacklistedTag, errorTag}, d.defaultTags...)
+		tags := append([]string{blacklistedTag, errorTag}, d.defaultTags...)
 		d.client.TimeInMilliseconds(reqBlacklisttMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
@@ -112,10 +107,9 @@ func (d *DataDogReporter) HandledBlacklist(request Request, blacklisted bool, er
 
 func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 	f := func() {
-		authorityTag := authorityKey + ":" + request.Authority
 		ratelimitedTag := ratelimitedKey + ":" + strconv.FormatBool(ratelimited)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
-		tags := append([]string{authorityTag, ratelimitedTag, errorTag}, d.defaultTags...)
+		tags := append([]string{ratelimitedTag, errorTag}, d.defaultTags...)
 		d.client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
