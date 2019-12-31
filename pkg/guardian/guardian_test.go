@@ -26,7 +26,7 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	if res := redis.Ping(); res.Err() != nil {
 		t.Fatalf("error pinging redis: %v", res.Err())
 	}
-	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, logger.WithField("context", "redis-conf-provider"))
+	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, logger.WithField("context", "redis-conf-provider"), nil)
 	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
@@ -34,10 +34,9 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	blacklister := NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), NullReporter{})
 	rateLimiter := &GenericRateLimiter{
 		KeyFunc:  IPRateLimiterKeyFunc,
-		Conf:     redisConfStore,
+		LimitProvider:     NewGlobalLimitProvider(redisConfStore),
 		Counter:  redisCounter,
 		Logger:   logger.WithField("context", "ip-rate-limiter"),
-		Reporter: NullReporter{},
 	}
 
 	condFuncChain := DefaultCondChain(whitelister, blacklister, rateLimiter)

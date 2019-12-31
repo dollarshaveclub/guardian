@@ -22,7 +22,7 @@ func newTestConfStoreWithDefaults(t *testing.T, defaultWhitelist []net.IPNet, de
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, TestingLogger), s
+	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, TestingLogger, NullReporter{}), s
 }
 
 func TestConfStoreReturnsDefaults(t *testing.T) {
@@ -36,7 +36,6 @@ func TestConfStoreReturnsDefaults(t *testing.T) {
 
 	gotWhitelist := c.GetWhitelist()
 	gotBlacklist := c.GetBlacklist()
-	gotLimit := c.GetLimit()
 	gotReportOnly := c.GetReportOnly()
 
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
@@ -45,10 +44,6 @@ func TestConfStoreReturnsDefaults(t *testing.T) {
 
 	if !cmp.Equal(gotBlacklist, expectedBlacklist) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)
-	}
-
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
 	}
 
 	if gotReportOnly != expectedReportOnly {
@@ -183,7 +178,6 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 
 	gotWhitelist := c.GetWhitelist()
 	gotBlacklist := c.GetBlacklist()
-	gotLimit := c.GetLimit()
 	gotReportOnly := c.GetReportOnly()
 
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
@@ -192,10 +186,6 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 
 	if !cmp.Equal(gotBlacklist, expectedBlacklist) {
 		t.Errorf("expected: %v received: %v", expectedBlacklist, gotBlacklist)
-	}
-
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
 	}
 
 	if gotReportOnly != expectedReportOnly {
@@ -240,7 +230,6 @@ func TestConfStoreRunUpdatesCache(t *testing.T) {
 
 	gotWhitelist := c.GetWhitelist()
 	gotBlacklist := c.GetBlacklist()
-	gotLimit := c.GetLimit()
 	gotReportOnly := c.GetReportOnly()
 
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
@@ -249,10 +238,6 @@ func TestConfStoreRunUpdatesCache(t *testing.T) {
 
 	if !cmp.Equal(gotBlacklist, expectedBlacklist) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)
-	}
-
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
 	}
 
 	if gotReportOnly != expectedReportOnly {

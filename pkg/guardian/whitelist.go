@@ -75,7 +75,6 @@ func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (boo
 	w.logger.Debug("Getting whitelist")
 	whitelist := w.provider.GetWhitelist()
 	w.logger.Debugf("Got whitelist with length %d", len(whitelist))
-	w.reporter.CurrentWhitelist(whitelist)
 
 	for _, cidr := range whitelist {
 		if cidr.Contains(ip) {

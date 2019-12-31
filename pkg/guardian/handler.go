@@ -17,17 +17,14 @@ type RateLimiter interface {
 // CondRequestBlockerFunc is the same as a RequestBlockerFunc with the added ability to indicate that the evaluation of a chain should stop
 type CondRequestBlockerFunc func(context.Context, Request) (stop, blocked bool, remaining uint32, err error)
 
-// DefaultCondChain is the default condiation chain used by Guardian. This performs the following checks when
+// DefaultCondChain is the default condition chain used by Guardian. This performs the following checks when
 // processing a request: whitelist, blacklist, rate limiters.
 func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, rateLimiters ...RateLimiter) RequestBlockerFunc {
 	condWhitelistFunc := CondStopOnWhitelistFunc(whitelister)
 	condBlacklistFunc := CondStopOnBlacklistFunc(blacklister)
 	rbfs := []CondRequestBlockerFunc{condWhitelistFunc, condBlacklistFunc}
-	for i := range rateLimiters {
-		rbfs = append(rbfs, func(ctx context.Context, req Request) (stop, blocked bool, remaining uint32, err error) {
-			blocked, remaining, err = rateLimiters[i].Limit(ctx, req)
-			return err != nil, blocked, remaining, err
-		})
+	for _, rl := range rateLimiters {
+		rbfs = append(rbfs, CondStopOnBlockOrError(rl))
 	}
 	return CondChain(rbfs...)
 }
@@ -55,10 +52,10 @@ func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 	}
 }
 
-// CondStopOnBlockOrError wraps a request blocker function and returns true for stop if the request was blocked or errored out
-func CondStopOnBlockOrError(f RequestBlockerFunc) CondRequestBlockerFunc {
+// CondStopOnBlockOrError wraps a RateLimiter Limit call and returns true for stop if the request was blocked or errored out
+func CondStopOnBlockOrError(rl RateLimiter) CondRequestBlockerFunc {
 	return func(c context.Context, r Request) (bool, bool, uint32, error) {
-		blocked, remaining, err := f(c, r)
+		blocked, remaining, err := rl.Limit(c, r)
 		stop := (blocked || err != nil)
 
 		return stop, blocked, remaining, err

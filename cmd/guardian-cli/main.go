@@ -64,7 +64,7 @@ func main() {
 	redisOpts := &redis.Options{Addr: *redisAddress}
 	redis := redis.NewClient(redisOpts)
 	logger := logrus.StandardLogger()
-	redisConfStore := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, logger)
+	redisConfStore := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, logger, nil)
 
 	level, err := logrus.ParseLevel(*logLevel)
 	if err != nil {

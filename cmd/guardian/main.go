@@ -94,7 +94,7 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"))
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"), reporter)
 	logger.Infof("starting cache update for conf store")
 
 	wg.Add(1)
@@ -112,14 +112,9 @@ func main() {
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
-	rateLimiter := &guardian.GenericRateLimiter{
-		KeyFunc:  guardian.IPRateLimiterKeyFunc,
-		Conf:     redisConfStore,
-		Counter:  redisCounter,
-		Logger:   logger.WithField("context", "ip-rate-limiter"),
-		Reporter: reporter,
-	}
-	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, rateLimiter)
+	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, redisCounter)
+	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, redisCounter)
+	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)
 	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)

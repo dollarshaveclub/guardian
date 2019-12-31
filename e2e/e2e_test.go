@@ -108,11 +108,58 @@ func TestBlacklist(t *testing.T) {
 	}
 }
 
+func TestRouteRateLimit(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/routeratelimitconfig.yml"
+
+	config := guardianConfig{
+		whitelist:     []string{},
+		blacklist:     []string{},
+		limitCount:    100,
+		limitDuration: time.Second,
+		limitEnabled:  false,
+		reportOnly:    false,
+		routeRateLimitConfigPath: configFilePath,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+
+	rrlConfig := guardian.RouteRateLimitConfig{}
+	rrlConfigBytes, err := ioutil.ReadFile(configFilePath)
+	if err != nil {
+		t.Fatalf("unable to read config file: %v", err)
+	}
+	err = yaml.Unmarshal(rrlConfigBytes, &rrlConfig)
+	if err != nil {
+		t.Fatalf("error unmarshaling expected result string: %v", err)
+	}
+
+	for _, routeRateLimit := range rrlConfig.RouteRatelimits {
+		for i := uint64(0); i < routeRateLimit.Limit.Count + 25; i++ {
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			}
+
+			res := GET(t, "192.168.1.234", routeRateLimit.Route)
+			res.Body.Close()
+
+			want := 200
+			if i >= routeRateLimit.Limit.Count && routeRateLimit.Limit.Enabled {
+				want = 429
+			}
+
+			if res.StatusCode != want {
+				t.Fatalf("wanted %v, got %v, iteration %v", want, res.StatusCode, i)
+			}
+		}
+	}
+
+}
+
 func TestSetRouteRateLimits(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/routeratelimitconfig.yml"
 	config := guardianConfig{
-		routeRateLimtConfigPath: configFilePath,
+		routeRateLimitConfigPath: configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	getCmd := "get-route-rate-limits"
@@ -151,7 +198,7 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/routeratelimitconfig.yml"
 	config := guardianConfig{
-		routeRateLimtConfigPath: configFilePath,
+		routeRateLimitConfigPath: configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	rmCmd := "remove-route-rate-limits"
@@ -207,7 +254,7 @@ type guardianConfig struct {
 	limitDuration           time.Duration
 	limitEnabled            bool
 	reportOnly              bool
-	routeRateLimtConfigPath string
+	routeRateLimitConfigPath string
 }
 
 func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
@@ -227,8 +274,8 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 		runGuardianCLI(t, redisAddr, "add-blacklist", strings.Join(c.blacklist, " "))
 	}
 
-	if len(c.routeRateLimtConfigPath) > 0 {
-		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimtConfigPath)
+	if len(c.routeRateLimitConfigPath) > 0 {
+		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPath)
 	}
 
 	time.Sleep(2 * time.Second)

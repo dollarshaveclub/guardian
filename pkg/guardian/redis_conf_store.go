@@ -23,13 +23,17 @@ const redisRouteRateLimitsDurationKey = "guardian_conf:route_limits:duration"
 const redisRouteRateLimitsCountKey = "guardian_conf:route_limits:count"
 
 // NewRedisConfStore creates a new RedisConfStore
-func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger) *RedisConfStore {
+func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger, mr MetricReporter) *RedisConfStore {
 	if defaultWhitelist == nil {
 		defaultWhitelist = []net.IPNet{}
 	}
 
 	if defaultBlacklist == nil {
 		defaultBlacklist = []net.IPNet{}
+	}
+
+	if mr == nil {
+		mr = NullReporter{}
 	}
 
 	defaultConf := conf{
@@ -39,14 +43,15 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		reportOnly:      defaultReportOnly,
 		routeRateLimits: make(map[url.URL]Limit),
 	}
-	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}}
+	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr,}
 }
 
 // RedisConfStore is a configuration provider that uses Redis for persistence
 type RedisConfStore struct {
-	redis  *redis.Client
-	conf   *lockingConf
-	logger logrus.FieldLogger
+	redis    *redis.Client
+	conf     *lockingConf
+	logger   logrus.FieldLogger
+	reporter MetricReporter
 }
 
 type conf struct {
@@ -56,6 +61,7 @@ type conf struct {
 	reportOnly      bool
 	routeRateLimits map[url.URL]Limit
 }
+
 type lockingConf struct {
 	sync.RWMutex
 	conf
@@ -164,9 +170,8 @@ func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
 	return nil
 }
 
-// SetRouteRateLimits will iterate through the map and set the limit for the corresponding route.
+// SetRouteRateLimits set the limit for each route.
 // If the route limit is already defined in the store, it will be overwritten.
-
 func (rs *RedisConfStore) SetRouteRateLimits(routeRateLimits map[url.URL]Limit) error {
 	for url, limit := range routeRateLimits {
 		route := url.EscapedPath()
@@ -245,13 +250,6 @@ func (rs *RedisConfStore) FetchRouteRateLimits() (map[url.URL]Limit, error) {
 		}
 	}
 	return res, nil
-}
-
-func (rs *RedisConfStore) GetLimit() Limit {
-	rs.conf.RLock()
-	defer rs.conf.RUnlock()
-
-	return rs.conf.limit
 }
 
 func (rs *RedisConfStore) FetchLimit() (Limit, error) {
@@ -346,14 +344,20 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		duration, _ := fetched.routeLimitDurations[url]
 		enabled, _ := fetched.routeRateLimitsEnabled[url]
 		if duration != nil && enabled != nil && count != nil {
-			rs.conf.routeRateLimits[url] = Limit{
+			l := Limit{
 				Count:    *count,
 				Duration: *duration,
 				Enabled:  *enabled,
 			}
+			rs.conf.routeRateLimits[url] = l
+			rs.reporter.CurrentRouteLimit(url.Path, l)
 		}
 	}
 
+	rs.reporter.CurrentGlobalLimit(rs.conf.limit)
+	rs.reporter.CurrentWhitelist(rs.conf.whitelist)
+	rs.reporter.CurrentBlacklist(rs.conf.blacklist)
+	rs.reporter.CurrentReportOnlyMode(rs.conf.reportOnly)
 	rs.logger.Debug("Updated conf")
 }
 

@@ -1,6 +1,7 @@
 package guardian
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -20,6 +21,7 @@ const redisCounterPrunePassMetricName = "redis_counter.cache.prune_pass"
 const rateLimitCountMetricName = "rate_limit.count"
 const rateLimitDurationMetricName = "rate_limit.duration"
 const rateLimitEnabledMetricName = "rate_limit.enabled"
+const routeRateLimitMetricName = "route_rate_limit.count"
 const whitelistCountMetricName = "whitelist.count"
 const blacklistCountMetricName = "blacklist.count"
 const reportOnlyEnabledMetricName = "report_only.enabled"
@@ -28,6 +30,9 @@ const whitelistedKey = "whitelisted"
 const blacklistedKey = "blacklisted"
 const ratelimitedKey = "ratelimited"
 const errorKey = "error"
+const durationKey = "duration"
+const routeKey = "route"
+const enabledKey = "enabled"
 
 const metricChannelBuffSize = 1000000
 
@@ -36,9 +41,11 @@ type MetricReporter interface {
 	HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledBlacklist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
+	HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
-	CurrentLimit(limit Limit)
+	CurrentGlobalLimit(limit Limit)
+	CurrentRouteLimit(route string, limit Limit)
 	CurrentWhitelist(whitelist []net.IPNet)
 	CurrentBlacklist(blacklist []net.IPNet)
 	CurrentReportOnlyMode(reportOnly bool)
@@ -115,6 +122,17 @@ func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, er
 	d.enqueue(f)
 }
 
+func (d *DataDogReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
+	f := func() {
+		ratelimitedTag := ratelimitedKey + ":" + strconv.FormatBool(ratelimited)
+		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
+		routeTag := routeKey + ":" + request.Path
+		tags := append([]string{ratelimitedTag, errorTag, routeTag}, d.defaultTags...)
+		d.client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	}
+	d.enqueue(f)
+}
+
 func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
 	f := func() {
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
@@ -133,16 +151,25 @@ func (d *DataDogReporter) RedisCounterPruned(duration time.Duration, cacheSize f
 	d.enqueue(f)
 }
 
-func (d *DataDogReporter) CurrentLimit(limit Limit) {
+func (d *DataDogReporter) CurrentGlobalLimit(limit Limit) {
 	f := func() {
 		enabled := 0
 		if limit.Enabled {
 			enabled = 1
 		}
-
 		d.client.Gauge(rateLimitCountMetricName, float64(limit.Count), d.defaultTags, 1)
 		d.client.Gauge(rateLimitDurationMetricName, float64(limit.Duration), d.defaultTags, 1)
 		d.client.Gauge(rateLimitEnabledMetricName, float64(enabled), d.defaultTags, 1)
+	}
+	d.enqueue(f)
+}
+
+func (d *DataDogReporter) CurrentRouteLimit(route string, limit Limit) {
+	f := func() {
+		rk := routeKey + ":" + route
+		dk := durationKey + ":" + limit.Duration.String()
+		ek := enabledKey + ":" + fmt.Sprintf("%v", limit.Enabled)
+		d.client.Gauge(routeRateLimitMetricName, float64(limit.Count), append(d.defaultTags, rk, dk, ek), 1)
 	}
 	d.enqueue(f)
 }
@@ -195,12 +222,18 @@ func (n NullReporter) HandledBlacklist(request Request, blacklisted bool, errorO
 func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorOccured bool, duration time.Duration) {
 }
 
+func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccured bool, duration time.Duration) {
+}
+
 func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
 }
 func (n NullReporter) RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64) {
 }
 
-func (n NullReporter) CurrentLimit(limit Limit) {
+func (n NullReporter) CurrentGlobalLimit(limit Limit) {
+}
+
+func (n NullReporter) CurrentRouteLimit(route string, limit Limit) {
 }
 
 func (n NullReporter) CurrentWhitelist(whitelist []net.IPNet) {

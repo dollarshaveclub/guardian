@@ -60,7 +60,6 @@ func (w *IPBlacklister) IsBlacklisted(context context.Context, req Request) (boo
 	w.logger.Debug("Getting blacklist")
 	blacklist := w.provider.GetBlacklist()
 	w.logger.Debugf("Got blacklist with length %d", len(blacklist))
-	w.reporter.CurrentBlacklist(blacklist)
 
 	for _, cidr := range blacklist {
 		if cidr.Contains(ip) {
