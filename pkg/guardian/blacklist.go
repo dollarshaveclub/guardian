@@ -42,11 +42,11 @@ type IPBlacklister struct {
 }
 
 func (w *IPBlacklister) IsBlacklisted(context context.Context, req Request) (bool, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 	blacklisted := false
 	errorOccurred := false
 	defer func() {
-		w.reporter.HandledBlacklist(req, blacklisted, errorOccurred, time.Now().Sub(start))
+		w.reporter.HandledBlacklist(req, blacklisted, errorOccurred, time.Since(start))
 	}()
 
 	w.logger.Debugf("checking blacklist for request %#v", req)

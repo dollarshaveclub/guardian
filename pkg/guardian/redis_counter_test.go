@@ -82,7 +82,7 @@ func TestPrune(t *testing.T) {
 		t.Fatalf("key should exist in cache but does not")
 	}
 
-	c.pruneCache(time.Now().Add(2 * time.Second))
+	c.pruneCache(time.Now().UTC().Add(2 * time.Second))
 
 	_, ok = c.cache.m[key]
 	if ok {

@@ -25,7 +25,7 @@ type Server struct {
 }
 
 func (s *Server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimitRequest) (*ratelimit.RateLimitResponse, error) {
-	start := time.Now()
+	start := time.Now().UTC()
 	req := RequestFromRateLimitRequest(relreq)
 
 	s.logger.Debugf("received rate limit request %v", relreq)

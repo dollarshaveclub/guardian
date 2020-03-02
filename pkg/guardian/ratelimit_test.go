@@ -44,7 +44,7 @@ func TestLimitRateLimits(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -75,7 +75,7 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 	limit := Limit{Count: 1, Duration: 1 * time.Second, Enabled: false}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -104,7 +104,7 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
@@ -149,10 +149,10 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64)}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
-	slot := rl.SlotKey(req, time.Now(), limit.Duration)
+	slot := SlotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
 	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
@@ -174,7 +174,7 @@ func TestLimitFailsOpen(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
@@ -194,7 +194,7 @@ func TestLimitRateLimitsOnBlock(t *testing.T) {
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 
 	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), forceBlock: true}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
+	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, Conf: fstore, Counter: fstore, Logger: TestingLogger, Reporter: NullReporter{}}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
@@ -210,9 +210,6 @@ func TestLimitRateLimitsOnBlock(t *testing.T) {
 }
 
 func TestSlotKeyGeneration(t *testing.T) {
-	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
-	fstore := &FakeLimitStore{limit: limit, count: make(map[string]uint64), injectedErr: fmt.Errorf("some error")}
-	rl := NewIPRateLimiter(fstore, fstore, TestingLogger, NullReporter{})
 
 	referenceRequest := Request{RemoteAddress: "192.168.1.2"}
 	referenceTime := time.Unix(1522969710, 0)
@@ -249,7 +246,7 @@ func TestSlotKeyGeneration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := rl.SlotKey(test.request, test.requestTime, test.limitDuration)
+			got := SlotKey(test.request.RemoteAddress, test.requestTime, test.limitDuration)
 			if got != test.want {
 				t.Errorf("got %v, wanted %v", got, test.want)
 			}

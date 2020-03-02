@@ -23,13 +23,22 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 
 	stop := make(chan struct{})
 	redis := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	if res := redis.Ping(); res.Err() != nil {
+		t.Fatalf("error pinging redis: %v", res.Err())
+	}
 	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, logger.WithField("context", "redis-conf-provider"))
 	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
 	blacklister := NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), NullReporter{})
-	rateLimiter := NewIPRateLimiter(redisConfStore, redisCounter, logger.WithField("context", "ip-rate-limiter"), NullReporter{})
+	rateLimiter := &GenericRateLimiter{
+		KeyFunc:  IPRateLimiterKeyFunc,
+		Conf:     redisConfStore,
+		Counter:  redisCounter,
+		Logger:   logger.WithField("context", "ip-rate-limiter"),
+		Reporter: NullReporter{},
+	}
 
 	condFuncChain := DefaultCondChain(whitelister, blacklister, rateLimiter)
 	server := NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), NullReporter{})
@@ -98,11 +107,10 @@ func TestBasicFunctionality(t *testing.T) {
 
 	logger := logrus.StandardLogger()
 	server, miniredis, redisConfStore, stop := newAcceptanceGuardianServer(t, logger)
-	defer func() {
-		miniredis.Close()
-	}()
+
 	defer func() {
 		close(stop)
+		miniredis.Close()
 	}()
 
 	whitelistedIP := "10.10.10.10"
@@ -162,8 +170,8 @@ func TestBasicFunctionality(t *testing.T) {
 			want = ratelimit.RateLimitResponse_OVER_LIMIT
 		}
 
-		if res.GetOverallCode() != want {
-			t.Fatalf("want %v, got %v, iteration %v", want, res.GetOverallCode(), i)
+		if res.OverallCode != want {
+			t.Fatalf("want %v, got %v, iteration %v", want, res.OverallCode, i)
 		}
 	}
 }

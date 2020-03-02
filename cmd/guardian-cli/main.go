@@ -2,14 +2,18 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
+	yaml "gopkg.in/yaml.v2"
 )
 
 func main() {
@@ -42,6 +46,13 @@ func main() {
 	limitEnabled := setLimitCmd.Arg("enabled", "limit enabled").Required().Bool()
 
 	getLimitCmd := app.Command("get-limit", "Gets the IP rate limit")
+
+	// Route rate limitting
+	setRouteRateLimitsCmd := app.Command("set-route-rate-limits", "Sets rate limits for provided routes")
+	configFilePath := setRouteRateLimitsCmd.Arg("config-file", "path to configuration file").Required().String()
+	removeRouteRateLimitsCmd := app.Command("remove-route-rate-limits", "Removes rate limits for provided routes")
+	removeRouteRateLimitStrings := removeRouteRateLimitsCmd.Arg("routes", "Comma seperated list of routes to remove").Required().String()
+	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route")
 
 	// Report Only
 	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
@@ -122,6 +133,35 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("%v\n", limit)
+	case getRouteRateLimitsCmd.FullCommand():
+		routeRateLimits, err := getRouteRateLimits(redisConfStore)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
+			os.Exit(1)
+		}
+		config := guardian.RouteRateLimitConfig{}
+		for url, limit := range routeRateLimits {
+			entry := guardian.RouteRateLimitConfigEntry{
+				Route: url.EscapedPath(),
+				Limit: limit,
+			}
+			config.RouteRatelimits = append(config.RouteRatelimits, entry)
+		}
+		configYaml, err := yaml.Marshal(config)
+		if err != nil {
+			fatalerror(fmt.Errorf("error marshaling route limit yaml: %v", err))
+		}
+		fmt.Println(string(configYaml))
+	case setRouteRateLimitsCmd.FullCommand():
+		err := setRouteRateLimits(redisConfStore, *configFilePath)
+		if err != nil {
+			fatalerror(fmt.Errorf("error setting route rate limits: %v", err))
+		}
+	case removeRouteRateLimitsCmd.FullCommand():
+		err := removeRouteRateLimits(redisConfStore, *removeRouteRateLimitStrings)
+		if err != nil {
+			fatalerror(fmt.Errorf("error remove route rate limits: %v", err))
+		}
 	case setReportOnlyCmd.FullCommand():
 		err := setReportOnly(redisConfStore, *reportOnly)
 		if err != nil {
@@ -261,4 +301,46 @@ func setReportOnly(store *guardian.RedisConfStore, reportOnly bool) error {
 
 func getReportOnly(store *guardian.RedisConfStore) (bool, error) {
 	return store.FetchReportOnly()
+}
+
+func getRouteRateLimits(store *guardian.RedisConfStore) (map[url.URL]guardian.Limit, error) {
+	return store.FetchRouteRateLimits()
+}
+
+func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error {
+	var urls []url.URL
+	for _, route := range strings.Split(routes, ",") {
+		unwantedURL, err := url.Parse(route)
+		if err != nil {
+			return fmt.Errorf("error parsing route: %v", err)
+		}
+		urls = append(urls, *unwantedURL)
+	}
+	return store.RemoveRouteRateLimits(urls)
+}
+
+func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) error {
+	routeRateLimits := make(map[url.URL]guardian.Limit)
+	content, err := ioutil.ReadFile(configFilePath)
+	if err != nil {
+		return fmt.Errorf("error reading config file: %v", err)
+	}
+	config := guardian.RouteRateLimitConfig{}
+	err = yaml.Unmarshal(content, &config)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling yaml: %v", err)
+	}
+	for _, routeRateLimitEntry := range config.RouteRatelimits {
+		configuredURL, err := url.Parse(routeRateLimitEntry.Route)
+		if err != nil {
+			return fmt.Errorf("error parsing route: %v", err)
+		}
+		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
+	}
+	return store.SetRouteRateLimits(routeRateLimits)
+}
+
+func fatalerror(err error) {
+	fmt.Fprintf(os.Stderr, err.Error())
+	os.Exit(1)
 }
