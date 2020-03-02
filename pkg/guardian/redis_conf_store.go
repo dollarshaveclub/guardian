@@ -252,6 +252,13 @@ func (rs *RedisConfStore) FetchRouteRateLimits() (map[url.URL]Limit, error) {
 	return res, nil
 }
 
+func (rs *RedisConfStore) GetLimit() Limit {
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+
+	return rs.conf.limit
+}
+
 func (rs *RedisConfStore) FetchLimit() (Limit, error) {
 	c := rs.pipelinedFetchConf()
 	if c.limitCount == nil || c.limitDuration == nil || c.limitEnabled == nil {

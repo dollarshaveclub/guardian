@@ -10,23 +10,25 @@ import (
 // This is achieved by writing custom implementations of the KeyFunc and LimitProvider that the GenericRateLimiter
 // struct depends on.
 
+// GlobalLimitStore is a limit store that does not accept any request metadata but can still return a Limit.
+type GlobalLimitStore interface {
+	GetLimit() Limit
+}
+
 // GlobalLimitProvider implements the LimitProvider interface.
 type GlobalLimitProvider struct {
-	*RedisConfStore
+	store GlobalLimitStore
 }
 
 // GetLimit gets the global limit applied to all requests.
 func (glp *GlobalLimitProvider) GetLimit(_ Request) Limit {
-	glp.conf.RLock()
-	defer glp.conf.RUnlock()
-
-	return glp.conf.limit
+	return glp.store.GetLimit()
 }
 
 // NewGlobalLimitProvider returns an implementation of a LimitProvider intended to provide limits for all requests from
 // a given client IP.
-func NewGlobalLimitProvider(rcs *RedisConfStore) *GlobalLimitProvider {
-	return &GlobalLimitProvider{rcs}
+func NewGlobalLimitProvider(store GlobalLimitStore) *GlobalLimitProvider {
+	return &GlobalLimitProvider{store}
 }
 
 // RouteRateLimiterKeyFunc provides a key unique to a particular client IP.
@@ -42,10 +44,10 @@ func ReportRateLimitHandled(mr MetricReporter) RateLimitHook {
 }
 
 // NewIPRateLimiter returns a rate limiter that enforces a limit upon all requests from each client IP.
-func NewIPRateLimiter(rcf *RedisConfStore, l logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
+func NewIPRateLimiter(store GlobalLimitStore, l logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
 	return &GenericRateLimiter{
 		KeyFunc:            IPRateLimiterKeyFunc,
-		LimitProvider:      NewGlobalLimitProvider(rcf),
+		LimitProvider:      NewGlobalLimitProvider(store),
 		Counter:            c,
 		Logger:             l,
 		OnRateLimitHandled: []RateLimitHook{ReportRateLimitHandled(mr)},

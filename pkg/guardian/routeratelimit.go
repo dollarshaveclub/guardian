@@ -10,28 +10,29 @@ import (
 // This is achieved by writing custom implementations of the KeyFunc and LimitProvider that the GenericRateLimiter
 // struct depends upon.
 
+//RouteRateLimitStore provides the ability to retrieve rate limit configuration for a given route
+type RouteRateLimitStore interface {
+	GetRouteRateLimit(url url.URL) Limit
+}
+
 // RouteLimitProvider implements the LimitProvider interface.
 type RouteLimitProvider struct {
-	*RedisConfStore
+	store RouteRateLimitStore
 }
 
 // GetLimit gets the limit for a particular request's path.
 func (rlp *RouteLimitProvider) GetLimit(req Request) Limit {
 	reqUrl, err := url.Parse(req.Path)
 	if err != nil || reqUrl == nil {
-		rlp.logger.Warnf("unable to parse url from request: %v", err)
 		return Limit{Enabled: false}
 	}
-
-	rlp.conf.RLock()
-	defer rlp.conf.RUnlock()
-	return rlp.conf.routeRateLimits[*reqUrl]
+	return rlp.store.GetRouteRateLimit(*reqUrl)
 }
 
 // NewRouteRateLimitProvider returns an implementation of a LimitProvider intended to provide limits based off a
 // a request's path and a client's IP address.
-func NewRouteRateLimitProvider(rcs *RedisConfStore) *RouteLimitProvider {
-	return &RouteLimitProvider{rcs}
+func NewRouteRateLimitProvider(store RouteRateLimitStore) *RouteLimitProvider {
+	return &RouteLimitProvider{store}
 }
 
 // RouteRateLimiterKeyFunc provides a key unique to a particular client IP and request path.
@@ -51,10 +52,10 @@ func OnRouteRateLimitHandled(mr MetricReporter) RateLimitHook {
 	}
 }
 
-func NewRouteRateLimiter(rcf *RedisConfStore, l logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
+func NewRouteRateLimiter(store RouteRateLimitStore, l logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
 	return &GenericRateLimiter{
 		KeyFunc:            RouteRateLimiterKeyFunc,
-		LimitProvider:      NewRouteRateLimitProvider(rcf),
+		LimitProvider:      NewRouteRateLimitProvider(store),
 		Counter:            c,
 		Logger:             l,
 		OnRateLimitHandled: []RateLimitHook{OnRouteRateLimitHandled(mr)},
