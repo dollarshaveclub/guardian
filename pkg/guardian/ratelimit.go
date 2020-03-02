@@ -33,7 +33,7 @@ type LimitProvider interface {
 // Counter is a data store capable of incrementing and expiring the count of a key
 type Counter interface {
 
-	// Incr incrementsHandledRatelimit key by count and sets the expiration to expireIn from now. The result of the incr, whether to force block,
+	// Incr increments key by count and sets the expiration to expireIn from now. The result of the incr, whether to force block,
 	// and an error is returned
 	Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error)
 }
