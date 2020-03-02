@@ -134,7 +134,7 @@ func TestRouteRateLimit(t *testing.T) {
 	}
 
 	for _, routeRateLimit := range rrlConfig.RouteRatelimits {
-		for i := uint64(0); i < routeRateLimit.Limit.Count + 25; i++ {
+		for i := uint64(0); i < routeRateLimit.Limit.Count + 5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
 				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
