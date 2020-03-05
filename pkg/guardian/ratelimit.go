@@ -69,7 +69,7 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 	}()
 
 	limit = rl.LimitProvider.GetLimit(request)
-	rl.Logger.Debugf("fetched limit %v", limit)
+	rl.Logger.Debugf("fetched limit %v for request %v", limit, request.Path)
 	if !limit.Enabled {
 		rl.Logger.Debugf("limit not enabled for request %v, allowing", request)
 		return false, math.MaxUint32, nil

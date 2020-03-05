@@ -82,7 +82,6 @@ func (w *IPWhitelister) IsWhitelisted(context context.Context, req Request) (boo
 			whitelisted = true
 			return true, nil
 		}
-		w.logger.Debugf("CIDR %v does not contain %v of whitelist", cidr.String(), ip)
 	}
 
 	w.logger.Debugf("%v NOT FOUND in whitelist", ip)

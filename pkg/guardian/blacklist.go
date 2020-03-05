@@ -67,7 +67,6 @@ func (w *IPBlacklister) IsBlacklisted(context context.Context, req Request) (boo
 			blacklisted = true
 			return true, nil
 		}
-		w.logger.Debugf("CIDR %v does not contain %v of blacklist", cidr.String(), ip)
 	}
 
 	w.logger.Debugf("%v NOT FOUND in blacklist", ip)

@@ -17,6 +17,7 @@ type RouteRateLimitStore interface {
 
 // RouteLimitProvider implements the LimitProvider interface.
 type RouteLimitProvider struct {
+	logger logrus.FieldLogger
 	store RouteRateLimitStore
 }
 
@@ -26,13 +27,15 @@ func (rlp *RouteLimitProvider) GetLimit(req Request) Limit {
 	if err != nil || reqUrl == nil {
 		return Limit{Enabled: false}
 	}
+
+	rlp.logger.Debugf("Getting route rate limit for %v", reqUrl)
 	return rlp.store.GetRouteRateLimit(*reqUrl)
 }
 
 // NewRouteRateLimitProvider returns an implementation of a LimitProvider intended to provide limits based off a
 // a request's path and a client's IP address.
-func NewRouteRateLimitProvider(store RouteRateLimitStore) *RouteLimitProvider {
-	return &RouteLimitProvider{store}
+func NewRouteRateLimitProvider(store RouteRateLimitStore, logger logrus.FieldLogger) *RouteLimitProvider {
+	return &RouteLimitProvider{store: store, logger: logger}
 }
 
 // RouteRateLimiterKeyFunc provides a key unique to a particular client IP and request path.
@@ -52,12 +55,12 @@ func OnRouteRateLimitHandled(mr MetricReporter) RateLimitHook {
 	}
 }
 
-func NewRouteRateLimiter(store RouteRateLimitStore, l logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
+func NewRouteRateLimiter(store RouteRateLimitStore, logger logrus.FieldLogger, mr MetricReporter, c Counter) *GenericRateLimiter {
 	return &GenericRateLimiter{
 		KeyFunc:            RouteRateLimiterKeyFunc,
-		LimitProvider:      NewRouteRateLimitProvider(store),
+		LimitProvider:      NewRouteRateLimitProvider(store, logger),
 		Counter:            c,
-		Logger:             l,
+		Logger:             logger,
 		OnRateLimitHandled: []RateLimitHook{OnRouteRateLimitHandled(mr)},
 	}
 }
