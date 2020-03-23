@@ -1,8 +1,8 @@
 version: '3'
 services:
-  envoy: 
+  envoy:
     build: envoy/.
-    ports: 
+    ports:
     - "8080:8080"
   guardian:
     build: ../.

@@ -43,7 +43,6 @@ func (s *Server) ShouldRateLimit(ctx context.Context, relreq *ratelimit.RateLimi
 	}
 
 	reportOnly := s.roProvider.GetReportOnly()
-	s.reporter.CurrentReportOnlyMode(reportOnly)
 
 	if block && !reportOnly {
 		resp.OverallCode = ratelimit.RateLimitResponse_OVER_LIMIT

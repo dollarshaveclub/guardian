@@ -35,7 +35,8 @@ func TestDatadogReportSetsDefaultTags(t *testing.T) {
 	reporter.HandledRatelimit(req, true, false, time.Second)
 	reporter.RedisCounterIncr(time.Second, false)
 	reporter.RedisCounterPruned(time.Second, 100, 20)
-	reporter.CurrentLimit(Limit{})
+	reporter.CurrentGlobalLimit(Limit{})
+	reporter.CurrentRouteLimit(req.Path, Limit{})
 	reporter.CurrentWhitelist([]net.IPNet{})
 	reporter.CurrentReportOnlyMode(false)
 

@@ -60,7 +60,6 @@ func (w *IPBlacklister) IsBlacklisted(context context.Context, req Request) (boo
 	w.logger.Debug("Getting blacklist")
 	blacklist := w.provider.GetBlacklist()
 	w.logger.Debugf("Got blacklist with length %d", len(blacklist))
-	w.reporter.CurrentBlacklist(blacklist)
 
 	for _, cidr := range blacklist {
 		if cidr.Contains(ip) {
@@ -68,7 +67,6 @@ func (w *IPBlacklister) IsBlacklisted(context context.Context, req Request) (boo
 			blacklisted = true
 			return true, nil
 		}
-		w.logger.Debugf("CIDR %v does not contain %v of blacklist", cidr.String(), ip)
 	}
 
 	w.logger.Debugf("%v NOT FOUND in blacklist", ip)

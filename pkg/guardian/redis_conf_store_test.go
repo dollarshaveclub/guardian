@@ -22,7 +22,7 @@ func newTestConfStoreWithDefaults(t *testing.T, defaultWhitelist []net.IPNet, de
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, TestingLogger), s
+	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, TestingLogger, NullReporter{}), s
 }
 
 func TestConfStoreReturnsDefaults(t *testing.T) {

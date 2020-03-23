@@ -98,15 +98,26 @@ func TestCondChainErrStop(t *testing.T) {
 	}
 }
 
+type FakeRateLimiter struct {
+	rbf RequestBlockerFunc
+}
+
+func (frl *FakeRateLimiter) Limit(c context.Context, req Request) (bool, uint32, error) {
+	return frl.rbf(c, req)
+}
+
 func TestCondStopOnBlockOrError(t *testing.T) {
-	handlerBlocked := func(context.Context, Request) (bool, uint32, error) {
-		return true, 20, nil
+	handlerBlocked := &FakeRateLimiter{
+		rbf: func(context.Context, Request) (bool, uint32, error) {
+			return true, 20, nil
+		},
 	}
 
-	handlerErr := func(context.Context, Request) (bool, uint32, error) {
-		return false, 20, fmt.Errorf("some error")
+	handlerErr := &FakeRateLimiter{
+		rbf: func(context.Context, Request) (bool, uint32, error) {
+			return false, 20, fmt.Errorf("some error")
+		},
 	}
-
 	expected := true
 	stop, _, _, _ := CondStopOnBlockOrError(handlerBlocked)(context.Background(), Request{})
 
