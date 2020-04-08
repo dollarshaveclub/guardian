@@ -12,7 +12,8 @@ import (
 
 const durationMetricName = "request.duration"
 const reqWhitelistMetricName = "request.whitelist"
-const reqBlacklisttMetricName = "request.blacklist"
+const reqBlacklistMetricName = "request.blacklist"
+const reqBannedMetricName = "request.banned"
 const reqRateLimitMetricName = "request.rate_limit"
 const redisCounterIncrMetricName = "redis_counter.incr"
 const redisCounterPrunedMetricName = "redis_counter.cache.pruned"
@@ -24,11 +25,13 @@ const rateLimitEnabledMetricName = "rate_limit.enabled"
 const routeRateLimitMetricName = "route_rate_limit.count"
 const whitelistCountMetricName = "whitelist.count"
 const blacklistCountMetricName = "blacklist.count"
+const bannedCountMetricName = "banned.count"
 const reportOnlyEnabledMetricName = "report_only.enabled"
 const blockedKey = "blocked"
 const whitelistedKey = "whitelisted"
 const blacklistedKey = "blacklisted"
 const ratelimitedKey = "ratelimited"
+const bannedKey = "banned"
 const errorKey = "error"
 const durationKey = "duration"
 const routeKey = "route"
@@ -42,12 +45,14 @@ type MetricReporter interface {
 	HandledBlacklist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
+	HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
 	CurrentGlobalLimit(limit Limit)
 	CurrentRouteLimit(route string, limit Limit)
 	CurrentWhitelist(whitelist []net.IPNet)
 	CurrentBlacklist(blacklist []net.IPNet)
+	CurrentBanned(banned []net.IPNet)
 	CurrentReportOnlyMode(reportOnly bool)
 }
 
@@ -107,7 +112,7 @@ func (d *DataDogReporter) HandledBlacklist(request Request, blacklisted bool, er
 		blacklistedTag := blacklistedKey + ":" + strconv.FormatBool(blacklisted)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{blacklistedTag, errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(reqBlacklisttMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.TimeInMilliseconds(reqBlacklistMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -132,6 +137,18 @@ func (d *DataDogReporter) HandledRatelimitWithRoute(request Request, ratelimited
 	}
 	d.enqueue(f)
 }
+
+func (d *DataDogReporter) HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration) {
+	f := func() {
+		bannedTag := bannedKey + ":" + strconv.FormatBool(banned)
+		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
+		routeTag := routeKey + ":" + request.Path
+		tags := append([]string{bannedTag, errorTag, routeTag}, d.defaultTags...)
+		d.client.TimeInMilliseconds(reqBannedMetricName, float64(duration/time.Millisecond), tags, 1.0)
+	}
+	d.enqueue(f)
+}
+
 
 func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
 	f := func() {
@@ -188,6 +205,13 @@ func (d *DataDogReporter) CurrentBlacklist(blacklist []net.IPNet) {
 	d.enqueue(f)
 }
 
+func (d *DataDogReporter) CurrentBanned(banned []net.IPNet) {
+	f := func() {
+		d.client.Gauge(bannedCountMetricName, float64(len(banned)), d.defaultTags, 1)
+	}
+	d.enqueue(f)
+}
+
 func (d *DataDogReporter) CurrentReportOnlyMode(reportOnly bool) {
 	f := func() {
 		enabled := 0
@@ -209,20 +233,23 @@ func (d *DataDogReporter) enqueue(f func()) {
 
 type NullReporter struct{}
 
-func (n NullReporter) Duration(request Request, blocked bool, errorOccured bool, duration time.Duration) {
+func (n NullReporter) Duration(request Request, blocked bool, errorOccurred bool, duration time.Duration) {
 }
 
-func (n NullReporter) HandledWhitelist(request Request, whitelisted bool, errorOccured bool, duration time.Duration) {
+func (n NullReporter) HandledWhitelist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration) {
 }
 
 func (n NullReporter) HandledBlacklist(request Request, blacklisted bool, errorOccurred bool, duration time.Duration) {
 
 }
 
-func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorOccured bool, duration time.Duration) {
+func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 }
 
-func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccured bool, duration time.Duration) {
+func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
+}
+
+func (n NullReporter) HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration) {
 }
 
 func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
@@ -240,6 +267,9 @@ func (n NullReporter) CurrentWhitelist(whitelist []net.IPNet) {
 }
 
 func (n NullReporter) CurrentBlacklist(blacklist []net.IPNet) {
+}
+
+func (n NullReporter) CurrentBanned(banned []net.IPNet) {
 }
 
 func (n NullReporter) CurrentReportOnlyMode(reportOnly bool) {
