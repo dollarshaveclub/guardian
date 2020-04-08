@@ -113,12 +113,12 @@ func TestRouteRateLimit(t *testing.T) {
 	configFilePath := "./config/routeratelimitconfig.yml"
 
 	config := guardianConfig{
-		whitelist:     []string{},
-		blacklist:     []string{},
-		limitCount:    100,
-		limitDuration: time.Second,
-		limitEnabled:  false,
-		reportOnly:    false,
+		whitelist:                []string{},
+		blacklist:                []string{},
+		limitCount:               100,
+		limitDuration:            time.Second,
+		limitEnabled:             false,
+		reportOnly:               false,
 		routeRateLimitConfigPath: configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
@@ -134,7 +134,7 @@ func TestRouteRateLimit(t *testing.T) {
 	}
 
 	for _, routeRateLimit := range rrlConfig.RouteRatelimits {
-		for i := uint64(0); i < routeRateLimit.Limit.Count + 5; i++ {
+		for i := uint64(0); i < routeRateLimit.Limit.Count+5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
 				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
@@ -218,6 +218,70 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	}
 }
 
+func TestSetJails(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/jailconfig.yml"
+	config := guardianConfig{
+		jailConfigPath:           configFilePath,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+
+	getCmd := "get-jails"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+	expectedResStr, err := ioutil.ReadFile(configFilePath)
+
+	res := guardian.JailConfig{}
+	expectedRes := guardian.JailConfig{}
+	err = yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+	err = yaml.Unmarshal(expectedResStr, &expectedRes)
+	if err != nil {
+		t.Fatalf("error unmarshaling expected result string: %v", err)
+	}
+
+	// Since the ordering of the slice returned from the cli can be different
+	// than the original config, we just want to verify that both configs contain
+	// the same entries in no particular order.
+	expectedResSet := make(map[string]guardian.Jail)
+	resSet := make(map[string]guardian.Jail)
+	for _, entry := range expectedRes.Jails {
+		expectedResSet[entry.Route] = entry.Jail
+	}
+	for _, entry := range res.Jails {
+		resSet[entry.Route] = entry.Jail
+	}
+
+	if !cmp.Equal(resSet, expectedResSet) {
+		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
+	}
+}
+
+func TestRemoveJail(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/jailconfig.yml"
+	config := guardianConfig{
+		jailConfigPath: configFilePath,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	rmCmd := "remove-jails"
+	runGuardianCLI(t, *redisAddr, rmCmd, "/foo/bar,/foo/baz")
+
+	getCmd := "get-jails"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+
+	res := guardian.JailConfig{}
+	err := yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+
+	if len(res.Jails) != 0 {
+		t.Fatalf("expected route rate limits to be empty after removing them")
+	}
+}
+
 func GET(t *testing.T, sourceIP string, path string) *http.Response {
 	t.Helper()
 
@@ -248,13 +312,14 @@ func resetRedis(redisAddr string) {
 }
 
 type guardianConfig struct {
-	whitelist               []string
-	blacklist               []string
-	limitCount              int
-	limitDuration           time.Duration
-	limitEnabled            bool
-	reportOnly              bool
+	whitelist                []string
+	blacklist                []string
+	limitCount               int
+	limitDuration            time.Duration
+	limitEnabled             bool
+	reportOnly               bool
 	routeRateLimitConfigPath string
+	jailConfigPath           string
 }
 
 func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
@@ -276,6 +341,10 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 
 	if len(c.routeRateLimitConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPath)
+	}
+
+	if len(c.jailConfigPath) > 0 {
+		runGuardianCLI(t, redisAddr, "set-jails", c.jailConfigPath)
 	}
 
 	time.Sleep(2 * time.Second)

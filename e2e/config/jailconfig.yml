@@ -1,0 +1,15 @@
+jails:
+  - route: "/foo/bar"
+    jail:
+      limit:
+        duration: 1m
+        enabled: true
+        count: 10
+      ban_duration: 1h
+  - route: "/foo/baz"
+    jail:
+      limit:
+        duration: 1m
+        enabled: false
+        count: 5
+      ban_duration: 1h

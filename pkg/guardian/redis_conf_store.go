@@ -23,6 +23,10 @@ const redisReportOnlyKey = "guardian_conf:reportOnly"
 const redisRouteRateLimitsEnabledKey = "guardian_conf:route_limits:enabled"
 const redisRouteRateLimitsDurationKey = "guardian_conf:route_limits:duration"
 const redisRouteRateLimitsCountKey = "guardian_conf:route_limits:count"
+const redisJailLimitsEnabledKey = "guardian_conf:jail:limits:enabled"
+const redisJailLimitsDurationKey = "guardian_conf:jail:limits:duration"
+const redisJailLimitsCountKey = "guardian_conf:jail:limits:count"
+const redisJailBanDurationKey = "guardian_conf:jail:ban:duration"
 
 // NewRedisConfStore creates a new RedisConfStore
 func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly, initConfig bool, logger logrus.FieldLogger, mr MetricReporter) *RedisConfStore {
@@ -44,7 +48,9 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		limit:           defaultLimit,
 		reportOnly:      defaultReportOnly,
 		routeRateLimits: make(map[url.URL]Limit),
+		jails:           make(map[url.URL]Jail),
 	}
+
 	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr,}
 	if initConfig {
 		if err := rcf.init(); err != nil {
@@ -68,11 +74,23 @@ type conf struct {
 	limit           Limit
 	reportOnly      bool
 	routeRateLimits map[url.URL]Limit
+	jails           map[url.URL]Jail
 }
 
 type lockingConf struct {
 	sync.RWMutex
 	conf
+}
+
+// JailConfigEntry models an entry in a config file for adding a jail
+type JailConfigEntry struct {
+	Route string `yaml:"route"`
+	Jail  Jail   `yaml:"jail"`
+}
+
+// JailConfig
+type JailConfig struct {
+	Jails []JailConfigEntry `yaml:"jails"`
 }
 
 // RouteRateLimitConfigEntry models an entry in a config file for adding route rate limits.
@@ -176,6 +194,97 @@ func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
 	}
 
 	return nil
+}
+
+// SetJails configures all of the jails
+func (rs *RedisConfStore) SetJails(jails map[url.URL]Jail) error {
+	for url, jail := range jails {
+		route := url.EscapedPath()
+		limitCountStr := strconv.FormatUint(jail.Limit.Count, 10)
+		limitDurationStr := jail.Limit.Duration.String()
+		limitEnabledStr := strconv.FormatBool(jail.Limit.Enabled)
+		jailBanDuration := jail.BanDuration.String()
+
+		pipe := rs.redis.TxPipeline()
+		pipe.HSet(redisJailLimitsCountKey, route, limitCountStr)
+		pipe.HSet(redisJailLimitsDurationKey, route, limitDurationStr)
+		pipe.HSet(redisJailLimitsEnabledKey, route, limitEnabledStr)
+		pipe.HSet(redisJailBanDurationKey, route, jailBanDuration)
+		_, err := pipe.Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rs *RedisConfStore) RemoveJails(urls []url.URL) error {
+	for _, url := range urls {
+		route := url.EscapedPath()
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsCountKey, route)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsDurationKey, route)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsEnabledKey, route)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailBanDurationKey, route)
+
+		pipe := rs.redis.TxPipeline()
+		pipe.HDel(redisJailLimitsCountKey, route)
+		pipe.HDel(redisJailLimitsDurationKey, route)
+		pipe.HDel(redisJailLimitsEnabledKey, route)
+		pipe.HDel(redisJailBanDurationKey, route)
+		_, err := pipe.Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rs *RedisConfStore) GetJail(url url.URL) Jail {
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+	jail, _ := rs.conf.jails[url]
+	return jail
+}
+
+func (rs *RedisConfStore) FetchJail(url url.URL) (Jail, error) {
+	c := rs.pipelinedFetchConf()
+	count, _ := c.jailLimitCounts[url]
+	duration, _ := c.jailLimitDurations[url]
+	enabled, _ := c.jailLimitsEnabled[url]
+	banDuration, _ := c.jailBanDuration[url]
+	if count == nil || duration == nil || enabled == nil || banDuration == nil {
+		return Jail{}, fmt.Errorf("jail not found")
+	}
+	return Jail{
+		Limit: Limit{
+			Count:    *count,
+			Duration: *duration,
+			Enabled:  *enabled,
+		},
+		BanDuration: *banDuration,
+	}, nil
+}
+
+func (rs *RedisConfStore) FetchJails() (map[url.URL]Jail, error) {
+	c := rs.pipelinedFetchConf()
+	jails := make(map[url.URL]Jail)
+
+	for url, count := range c.jailLimitCounts {
+		duration, _ := c.jailLimitDurations[url]
+		enabled, _ := c.jailLimitsEnabled[url]
+		banDuration, _ := c.jailBanDuration[url]
+		if count != nil && duration != nil && enabled != nil && banDuration != nil {
+			jails[url] = Jail{
+				Limit: Limit{
+					Duration: *duration,
+					Enabled:  *enabled,
+					Count:    *count,
+				},
+				BanDuration: *banDuration,
+			}
+		}
+	}
+	return jails, nil
 }
 
 // SetRouteRateLimits set the limit for each route.
@@ -436,6 +545,10 @@ type fetchConf struct {
 	routeLimitDurations    map[url.URL]*time.Duration
 	routeLimitCounts       map[url.URL]*uint64
 	routeRateLimitsEnabled map[url.URL]*bool
+	jailLimitDurations     map[url.URL]*time.Duration
+	jailLimitCounts        map[url.URL]*uint64
+	jailLimitsEnabled      map[url.URL]*bool
+	jailBanDuration        map[url.URL]*time.Duration
 }
 
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
@@ -443,6 +556,10 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		routeLimitDurations:    make(map[url.URL]*time.Duration),
 		routeLimitCounts:       make(map[url.URL]*uint64),
 		routeRateLimitsEnabled: make(map[url.URL]*bool),
+		jailLimitDurations:     make(map[url.URL]*time.Duration),
+		jailLimitCounts:        make(map[url.URL]*uint64),
+		jailLimitsEnabled:      make(map[url.URL]*bool),
+		jailBanDuration:        make(map[url.URL]*time.Duration),
 	}
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPWhitelistKey)
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPBlacklistKey)
@@ -453,6 +570,10 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsCountKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsDurationKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsCountKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsDurationKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsEnabledKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisJailBanDurationKey)
 
 	pipe := rs.redis.Pipeline()
 	defer pipe.Close()
@@ -465,6 +586,11 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	routeRateLimitsCountCmd := pipe.HGetAll(redisRouteRateLimitsCountKey)
 	routeRateLimitsDurationCmd := pipe.HGetAll(redisRouteRateLimitsDurationKey)
 	routeRateLimitsEnabledCmd := pipe.HGetAll(redisRouteRateLimitsEnabledKey)
+	jailLimitCountCmd := pipe.HGetAll(redisJailLimitsCountKey)
+	jailLimitDurationCmd := pipe.HGetAll(redisJailLimitsDurationKey)
+	jailLimitEnabledCmd := pipe.HGetAll(redisJailLimitsEnabledKey)
+	jailBanDurationCmd := pipe.HGetAll(redisJailBanDurationKey)
+
 	pipe.Exec()
 
 	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
@@ -558,6 +684,62 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else {
 		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
+	}
+
+	if jailLimitCounts, err := jailLimitCountCmd.Result(); err == nil {
+		for route, countStr := range jailLimitCounts {
+			parsedURL, urlParseErr := url.Parse(route)
+			count, intParseErr := strconv.ParseUint(countStr, 10, 64)
+			if urlParseErr != nil || intParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(intParseErr).Warnf("error parsing jail limit count for %v", route)
+			} else {
+				newConf.jailLimitCounts[*parsedURL] = &count
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsCountKey)
+	}
+
+	if jailLimitDurations, err := jailLimitDurationCmd.Result(); err == nil {
+		for route, durationStr := range jailLimitDurations {
+			parsedURL, urlParseErr := url.Parse(route)
+			duration, durationParseErr := time.ParseDuration(durationStr)
+			if urlParseErr != nil || durationParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(durationParseErr).Warnf("error parsing jail limit duration for %v", route)
+			} else {
+				newConf.jailLimitDurations[*parsedURL] = &duration
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsDurationKey)
+	}
+
+	if jailLimitsEnabled, err := jailLimitEnabledCmd.Result(); err == nil {
+		for route, enabled := range jailLimitsEnabled {
+			parsedURL, urlParseErr := url.Parse(route)
+			enabled, boolParseErr := strconv.ParseBool(enabled)
+			if urlParseErr != nil || boolParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(boolParseErr).Warnf("error parsing route limit enabled for %v", route)
+			} else {
+				newConf.jailLimitsEnabled[*parsedURL] = &enabled
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsEnabledKey)
+	}
+
+	if jailBanDurations, err := jailBanDurationCmd.Result(); err == nil {
+		for route, durationStr := range jailBanDurations {
+			parsedURL, urlParseErr := url.Parse(route)
+			duration, durationParseErr := time.ParseDuration(durationStr)
+			if urlParseErr != nil || durationParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(durationParseErr).Warnf("error parsing jail ban duration for %v", route)
+			} else {
+				newConf.jailBanDuration[*parsedURL] = &duration
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsEnabledKey)
 	}
 
 	return newConf
