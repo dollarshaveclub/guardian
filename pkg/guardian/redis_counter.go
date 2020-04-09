@@ -28,7 +28,7 @@ type lockingExpiringMap struct {
 	m map[string]item
 }
 
-// RedisLimitCounter is a Counter that uses Redis for persistance
+// RedisLimitCounter is a Counter that uses Redis for persistence
 // TODO: fetch the current limit configuration from redis instead of using
 // a static one
 type RedisCounter struct {

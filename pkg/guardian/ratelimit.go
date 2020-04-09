@@ -80,7 +80,7 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 
 	currCount, blocked, err := rl.Counter.Incr(context, key, 1, limit.Count, limit.Duration)
 	if err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
+		err = errors.Wrap(err, fmt.Sprintf("error incrementing counter for request %v", request))
 		rl.Logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}

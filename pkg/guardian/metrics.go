@@ -36,6 +36,7 @@ const errorKey = "error"
 const durationKey = "duration"
 const routeKey = "route"
 const enabledKey = "enabled"
+const banDurationKey = "ban_duration"
 
 const metricChannelBuffSize = 1000000
 
@@ -52,7 +53,8 @@ type MetricReporter interface {
 	CurrentRouteLimit(route string, limit Limit)
 	CurrentWhitelist(whitelist []net.IPNet)
 	CurrentBlacklist(blacklist []net.IPNet)
-	CurrentBanned(banned []net.IPNet)
+	CurrentBanned(banned map[string]time.Time)
+	CurrentRouteJail(route string, jail Jail)
 	CurrentReportOnlyMode(reportOnly bool)
 }
 
@@ -191,6 +193,17 @@ func (d *DataDogReporter) CurrentRouteLimit(route string, limit Limit) {
 	d.enqueue(f)
 }
 
+func (d *DataDogReporter) CurrentRouteJail(route string, jail Jail) {
+	f := func() {
+		rk := routeKey + ":" + route
+		dk := durationKey + ":" + jail.Limit.Duration.String()
+		ek := enabledKey + ":" + strconv.FormatBool(jail.Limit.Enabled)
+		bdk := banDurationKey + ":" + jail.BanDuration.String()
+		d.client.Gauge(routeRateLimitMetricName, float64(jail.Limit.Count), append(d.defaultTags, rk, dk, ek, bdk), 1)
+	}
+	d.enqueue(f)
+}
+
 func (d *DataDogReporter) CurrentWhitelist(whitelist []net.IPNet) {
 	f := func() {
 		d.client.Gauge(whitelistCountMetricName, float64(len(whitelist)), d.defaultTags, 1)
@@ -205,7 +218,7 @@ func (d *DataDogReporter) CurrentBlacklist(blacklist []net.IPNet) {
 	d.enqueue(f)
 }
 
-func (d *DataDogReporter) CurrentBanned(banned []net.IPNet) {
+func (d *DataDogReporter) CurrentBanned(banned map[string]time.Time) {
 	f := func() {
 		d.client.Gauge(bannedCountMetricName, float64(len(banned)), d.defaultTags, 1)
 	}
@@ -263,13 +276,16 @@ func (n NullReporter) CurrentGlobalLimit(limit Limit) {
 func (n NullReporter) CurrentRouteLimit(route string, limit Limit) {
 }
 
+func (n NullReporter) CurrentRouteJail(route string, jail Jail) {
+}
+
 func (n NullReporter) CurrentWhitelist(whitelist []net.IPNet) {
 }
 
 func (n NullReporter) CurrentBlacklist(blacklist []net.IPNet) {
 }
 
-func (n NullReporter) CurrentBanned(banned []net.IPNet) {
+func (n NullReporter) CurrentBanned(banned map[string]time.Time) {
 }
 
 func (n NullReporter) CurrentReportOnlyMode(reportOnly bool) {

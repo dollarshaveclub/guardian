@@ -218,6 +218,58 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	}
 }
 
+func TestJails(t *testing.T) {
+	resetRedis(*redisAddr)
+	configFilePath := "./config/jailconfig.yml"
+
+	config := guardianConfig{
+		whitelist:                []string{},
+		blacklist:                []string{},
+		limitCount:               5,
+		limitDuration:            time.Minute,
+		limitEnabled:             false,
+		reportOnly:               false,
+		routeRateLimitConfigPath: "",
+		jailConfigPath:           configFilePath,
+	}
+
+	applyGuardianConfig(t, *redisAddr, config)
+	jailConfig := &guardian.JailConfig{}
+	jailConfigContents, err := ioutil.ReadFile(config.jailConfigPath)
+	if err != nil {
+		t.Fatalf("unable to read config file: %v", err)
+	}
+	err = yaml.Unmarshal(jailConfigContents, jailConfig)
+	if err != nil {
+		t.Fatalf("error unmarhsaling config file contents: %v", err)
+	}
+
+	banned := false
+	// Assumes that any BanDuration in the Jail Config is greater than the time it takes
+	// to execute this particular test.
+	for _, j := range jailConfig.Jails {
+		for i := uint64(0); i < j.Jail.Limit.Count+5; i++ {
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			}
+
+			res := GET(t, "192.168.1.43", j.Route)
+			res.Body.Close()
+
+			want := 200
+			if (i >= j.Jail.Limit.Count && j.Jail.Limit.Enabled) || banned {
+				banned = true
+				want = 429
+			}
+
+			if res.StatusCode != want {
+				t.Fatalf("wanted %v, got %v, iteration %v, route: %v", want, res.StatusCode, i, j.Route)
+			}
+		}
+	}
+
+}
+
 func TestSetJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"

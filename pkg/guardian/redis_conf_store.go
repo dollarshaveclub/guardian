@@ -16,6 +16,7 @@ import (
 
 const redisIPWhitelistKey = "guardian_conf:whitelist"
 const redisIPBlacklistKey = "guardian_conf:blacklist"
+const redisJailedSetKey = "guardian_conf:jailed"
 const redisLimitCountKey = "guardian_conf:limit_count"
 const redisLimitDurationKey = "guardian_conf:limit_duration"
 const redisLimitEnabledKey = "guardian_conf:limit_enabled"
@@ -49,6 +50,13 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		reportOnly:      defaultReportOnly,
 		routeRateLimits: make(map[url.URL]Limit),
 		jails:           make(map[url.URL]Jail),
+		// jailed is a map of ips represented as string, to time.Time that represent the time, in utc, in which the entry in the map should expire.
+		// this is an artifact of 2 things:
+		// 1. Redis Hashmaps and Sets to not support expiry of individual keys
+		// 2. We could just rely upon unique keys in the global keyspace and do prefix lookups with the KEYS function, however, these lookups would be O(N).
+		//    N in this case is every single entry within the database. This is not a valid option considering we could have millions of keys in the database
+		//    and cause Redis to requests to be blocked for seconds
+		jailed: make(map[string]time.Time),
 	}
 
 	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr,}
@@ -74,7 +82,8 @@ type conf struct {
 	limit           Limit
 	reportOnly      bool
 	routeRateLimits map[url.URL]Limit
-	jails           map[url.URL]Jail
+	jails           map[url.URL]Jail     // jail specifications from user
+	jailed          map[string]time.Time // set of IPs currently jailed
 }
 
 type lockingConf struct {
@@ -120,6 +129,38 @@ func (rs *RedisConfStore) FetchWhitelist() ([]net.IPNet, error) {
 	return c.whitelist, nil
 }
 
+func (rs *RedisConfStore) IsJailed(ip net.IP) bool {
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+	_, ok := rs.conf.jailed[ip.String()]
+	return ok
+}
+
+func (rs *RedisConfStore) FetchJailed() (map[string]time.Time, error) {
+	c := rs.pipelinedFetchConf()
+	if c.jailed == nil {
+		return nil, fmt.Errorf("error fetching jailed")
+	}
+	return c.jailed, nil
+}
+
+// TODO(mk): create way to prune jailed hashmap based off expiry. a separate cli command / cronjob should suffice
+func (rs *RedisConfStore) AddJailed(ip net.IP, expiration time.Duration) {
+	rs.conf.Lock()
+	defer rs.conf.Unlock()
+
+	expiry := time.Now().UTC().Add(expiration)
+	rs.conf.jailed[ip.String()] = expiry
+
+	go func() {
+		res := rs.redis.HSet(redisJailedSetKey, ip.String(), expiry.String())
+		rs.logger.Debugf("Sending HSet for hashmap: %v, for key %v, with expiry: %v", redisJailedSetKey, ip.String(), expiry.String())
+		if res.Err() != nil {
+			rs.logger.Errorf("error setting hashmap: %v, for key: %v, err: %v", redisJailedSetKey, ip.String, res.Err())
+		}
+	}()
+}
+
 func (rs *RedisConfStore) GetBlacklist() []net.IPNet {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
@@ -142,7 +183,6 @@ func (rs *RedisConfStore) AddWhitelistCidrs(cidrs []net.IPNet) error {
 		field := cidr.String()
 		rs.logger.Debugf("Sending HSet for key %v field %v", key, field)
 		res := rs.redis.HSet(key, field, "true") // value doesn't matter
-
 		if res.Err() != nil {
 			return res.Err()
 		}
@@ -502,6 +542,10 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.blacklist = fetched.blacklist
 	}
 
+	if fetched.jailed != nil {
+		rs.conf.jailed = fetched.jailed
+	}
+
 	if fetched.limitCount != nil &&
 		fetched.limitDuration != nil &&
 		fetched.limitEnabled != nil {
@@ -528,10 +572,29 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		}
 	}
 
+	for url, count := range fetched.jailLimitCounts {
+		duration, _ := fetched.jailLimitDurations[url]
+		enabled, _ := fetched.jailLimitsEnabled[url]
+		banDuration, _ := fetched.jailBanDuration[url]
+		if duration != nil && enabled != nil && count != nil && banDuration != nil {
+			j := Jail{
+				Limit: Limit{
+					Count:    *count,
+					Duration: *duration,
+					Enabled:  *enabled,
+				},
+				BanDuration: *banDuration,
+			}
+			rs.conf.jails[url] = j
+			rs.reporter.CurrentRouteJail(url.Path, j)
+		}
+	}
+
 	rs.reporter.CurrentGlobalLimit(rs.conf.limit)
 	rs.reporter.CurrentWhitelist(rs.conf.whitelist)
 	rs.reporter.CurrentBlacklist(rs.conf.blacklist)
 	rs.reporter.CurrentReportOnlyMode(rs.conf.reportOnly)
+	rs.reporter.CurrentBanned(rs.conf.jailed)
 	rs.logger.Debug("Updated conf")
 }
 
@@ -549,6 +612,7 @@ type fetchConf struct {
 	jailLimitCounts        map[url.URL]*uint64
 	jailLimitsEnabled      map[url.URL]*bool
 	jailBanDuration        map[url.URL]*time.Duration
+	jailed                 map[string]time.Time
 }
 
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
@@ -560,6 +624,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		jailLimitCounts:        make(map[url.URL]*uint64),
 		jailLimitsEnabled:      make(map[url.URL]*bool),
 		jailBanDuration:        make(map[url.URL]*time.Duration),
+		jailed: 				make(map[string]time.Time),
 	}
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPWhitelistKey)
 	rs.logger.Debugf("Sending HKEYS for key %v", redisIPBlacklistKey)
@@ -574,6 +639,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsDurationKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsEnabledKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailBanDurationKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisJailedSetKey)
 
 	pipe := rs.redis.Pipeline()
 	defer pipe.Close()
@@ -590,6 +656,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	jailLimitDurationCmd := pipe.HGetAll(redisJailLimitsDurationKey)
 	jailLimitEnabledCmd := pipe.HGetAll(redisJailLimitsEnabledKey)
 	jailBanDurationCmd := pipe.HGetAll(redisJailBanDurationKey)
+	jailedMembersCmd := pipe.HGetAll(redisJailedSetKey)
 
 	pipe.Exec()
 
@@ -740,6 +807,22 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else {
 		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsEnabledKey)
+	}
+
+	if jailMembers, err := jailedMembersCmd.Result(); err == nil {
+		for ip, expiry := range jailMembers {
+			expireTime, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", expiry)
+			if err != nil {
+				rs.logger.WithError(err).Warnf("error parsing time (%v): %v", expiry, err)
+			}
+			// only place in map if expire time is later than now, rely upon separate clean up job
+			// to clean up expired bans.
+			if time.Now().UTC().Before(expireTime) {
+				newConf.jailed[ip] = expireTime
+			}
+		}
+	} else {
+		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailedSetKey)
 	}
 
 	return newConf
