@@ -210,9 +210,11 @@ func main() {
 		}
 		fmt.Println(string(configYaml))
 	case prunePrisonersCmd.FullCommand():
+		all := false
 		if allPrisoners != nil && *allPrisoners {
-
+			all = true
 		}
+		prunePrisoners(redisConfStore, all)
 	}
 }
 

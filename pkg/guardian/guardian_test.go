@@ -38,8 +38,9 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 		Counter:  redisCounter,
 		Logger:   logger.WithField("context", "ip-rate-limiter"),
 	}
+	jailer := NewGenericJailer(redisConfStore, logger, redisCounter, redisConfStore, NullReporter{})
 
-	condFuncChain := DefaultCondChain(whitelister, blacklister, rateLimiter)
+	condFuncChain := DefaultCondChain(whitelister, blacklister, jailer, rateLimiter)
 	server := NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), NullReporter{})
 
 	return server, mr, redisConfStore, stop
