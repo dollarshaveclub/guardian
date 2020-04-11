@@ -46,7 +46,7 @@ type MetricReporter interface {
 	HandledBlacklist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
-	HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration)
+	HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
 	CurrentGlobalLimit(limit Limit)
@@ -63,6 +63,18 @@ type DataDogReporter struct {
 	logger      logrus.FieldLogger
 	defaultTags []string
 	c           chan func()
+}
+
+type MetricOption struct {
+	additionalTags []string
+}
+
+type MetricOptionSetter func(mo *MetricOption)
+
+func WithRoute(route string) MetricOptionSetter {
+	return func(mo *MetricOption) {
+		mo.additionalTags = append(mo.additionalTags, routeKey + ":" + route)
+	}
 }
 
 func NewDataDogReporter(client *statsd.Client, defaultTags []string, logger logrus.FieldLogger) *DataDogReporter {
@@ -140,12 +152,18 @@ func (d *DataDogReporter) HandledRatelimitWithRoute(request Request, ratelimited
 	d.enqueue(f)
 }
 
-func (d *DataDogReporter) HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration) {
+func (d *DataDogReporter) HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
+	mo := MetricOption{}
+	for _, fn := range setters {
+		fn(&mo)
+	}
+	tags := append([]string{}, d.defaultTags...)
+	tags = append(tags, mo.additionalTags...)
 	f := func() {
-		bannedTag := bannedKey + ":" + strconv.FormatBool(banned)
+		bannedTag := bannedKey + ":" + strconv.FormatBool(jailed)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		routeTag := routeKey + ":" + request.Path
-		tags := append([]string{bannedTag, errorTag, routeTag}, d.defaultTags...)
+		tags := append(tags, []string{bannedTag, errorTag, routeTag}...)
 		d.client.TimeInMilliseconds(reqBannedMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
@@ -262,7 +280,7 @@ func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorO
 func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 }
 
-func (n NullReporter) HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration) {
+func (n NullReporter)  HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
 }
 
 func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {

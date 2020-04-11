@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 // Jail is a namesake of a similar concept from fail2ban
 // https://docs.plesk.com/en-US/obsidian/administrator-guide/73382/
 // In the context of Guardian, a Jail is a combination of a Limit and a BanDuration.
@@ -26,6 +25,8 @@ type Jailer interface {
 	IsJailed(ctx context.Context, request Request) (bool, error)
 }
 
+// CondStopOnJailed uses a jailer to determine if a request should be blocked or not. It will also stop further processing
+// on the request if the client ip is jailed.
 func CondStopOnJailed(jailer Jailer) CondRequestBlockerFunc {
 	return func(ctx context.Context, req Request) (bool, bool, uint32, error) {
 		jailed, err := jailer.IsJailed(ctx, req)
@@ -39,26 +40,29 @@ func CondStopOnJailed(jailer Jailer) CondRequestBlockerFunc {
 	}
 }
 
-type Warden interface {
-	IsJailed(ip net.IP) bool
-	AddJailed(ip net.IP, expiration time.Duration)
+// PrisonerStore can check if a client ip is a prisoner and also add prisoners
+type PrisonerStore interface {
+	IsPrisoner(ip net.IP) bool
+	AddPrisoner(ip net.IP, expiration time.Duration)
 }
 
+// A JailProvider is a generic interface for determining which jail (if any) applies to a request
+type JailProvider interface {
+	GetJail(req Request) Jail
+}
 
 // A RouteJailStore can retrieve the Jail configuration for a given route
 type RouteJailStore interface {
 	GetJail(u url.URL) Jail
 }
 
-type JailProvider interface {
-	GetJail(req Request) Jail
-}
-
+// A RouteJailProvider is a jail provider that provides a jail based off the route of a request
 type RouteJailProvider struct {
 	logger logrus.FieldLogger
-	store RouteJailStore
+	store  RouteJailStore
 }
 
+// GetJail queries the store to determine which Jail, if any, applies to the request.
 func (jp *RouteJailProvider) GetJail(req Request) Jail {
 	reqUrl, err := url.Parse(req.Path)
 	if err != nil || reqUrl == nil {
@@ -80,21 +84,42 @@ func routeJailKeyFunc(req Request) string {
 }
 
 type GenericJailer struct {
-	keyFunc func(req Request) string
+	keyFunc      func(req Request) string
 	jailProvider JailProvider
-	warden Warden
-	counter Counter
-	logger logrus.FieldLogger
+	store        PrisonerStore
+	counter      Counter
+	logger       logrus.FieldLogger
+	onJailHandled []JailedHandledHook
 }
 
-func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (bool, error) {
-	if gj.keyFunc == nil || gj.jailProvider == nil || gj.counter == nil || gj.logger == nil || gj.warden == nil {
+type JailedHandledHook func(req Request, jailed bool, dur time.Duration, err error)
+
+func OnGenericJailerHandled(mr MetricReporter) JailedHandledHook {
+	return func(req Request, jailed bool, dur time.Duration, err error) {
+		opts := []MetricOptionSetter{}
+		if jailed {
+			// Only set the routes for requests that were jailed. This way, we know the cardinality of the custom metrics.
+			opts = append(opts, WithRoute(req.Path))
+		}
+		mr.HandledJail(req, jailed, err != nil, dur, opts...)
+	}
+}
+
+func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (jailed bool, err error) {
+	if gj.keyFunc == nil || gj.jailProvider == nil || gj.counter == nil || gj.logger == nil || gj.store == nil {
 		gj.logger.Error("misconfigured generic jailer: missing required field")
 		return false, nil
 	}
 
+	start := time.Now().UTC()
+	defer func() {
+		for _, fn := range gj.onJailHandled {
+			fn(request, jailed, time.Since(start), err)
+		}
+	}()
+
 	ip := net.ParseIP(request.RemoteAddress)
-	if gj.warden.IsJailed(ip) {
+	if gj.store.IsPrisoner(ip) {
 		return true, nil
 	}
 
@@ -117,18 +142,22 @@ func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (bool, e
 
 	banned := blocked || currCount > jail.Limit.Count
 	if banned {
-		gj.warden.AddJailed(ip, jail.BanDuration)
+		gj.store.AddPrisoner(ip, jail.BanDuration)
 		gj.logger.Debugf("banning ip: %v, due to jail: %v", ip.String(), jail)
+		return true, nil
 	}
+
 	return false, nil
 }
 
-func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter, w Warden) *GenericJailer {
+func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter, s PrisonerStore, mr MetricReporter) *GenericJailer {
 	return &GenericJailer{
 		keyFunc:      routeJailKeyFunc,
 		jailProvider: NewRouteJailProvider(store, logger),
-		warden:       w,
+		store:        s,
 		counter:      c,
 		logger:       logger,
+		// TODO: Expose this field for users to configure as needed
+		onJailHandled: []JailedHandledHook{OnGenericJailerHandled(mr)},
 	}
 }

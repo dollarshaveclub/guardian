@@ -60,6 +60,8 @@ func main() {
 	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes")
 	removeJailsArgs := removeJailsCmd.Arg("jail-routes", "Comma separated list of jails to remove. Use the name of the route").Required().String()
 	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
+	prunePrisonersCmd := app.Command("prune-prisoners", "Removes prisoners from the prisoners list. By default, only removes prisoners who have served their time.")
+	allPrisoners := prunePrisonersCmd.Arg("all-prisoners", "Option to remove all of the prisoners from the prisoners list").Bool()
 
 	// Report Only
 	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
@@ -207,6 +209,10 @@ func main() {
 			fatalerror(fmt.Errorf("error marshaling jails yaml: %v", err))
 		}
 		fmt.Println(string(configYaml))
+	case prunePrisonersCmd.FullCommand():
+		if allPrisoners != nil && *allPrisoners {
+
+		}
 	}
 }
 
@@ -407,6 +413,14 @@ func removeJails(store *guardian.RedisConfStore, routes string) error {
 func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
 	return store.FetchJails()
 }
+
+func prunePrisoners(store *guardian.RedisConfStore, allPrisoners bool) error {
+	if allPrisoners {
+		return store.PruneAllPrisoners()
+	}
+	return store.PruneExpiredPrisoners()
+}
+
 
 func fatalerror(err error) {
 	fmt.Fprintf(os.Stderr, err.Error())

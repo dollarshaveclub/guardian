@@ -129,7 +129,7 @@ func (rs *RedisConfStore) FetchWhitelist() ([]net.IPNet, error) {
 	return c.whitelist, nil
 }
 
-func (rs *RedisConfStore) IsJailed(ip net.IP) bool {
+func (rs *RedisConfStore) IsPrisoner(ip net.IP) bool {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
 	_, ok := rs.conf.jailed[ip.String()]
@@ -144,8 +144,7 @@ func (rs *RedisConfStore) FetchJailed() (map[string]time.Time, error) {
 	return c.jailed, nil
 }
 
-// TODO(mk): create way to prune jailed hashmap based off expiry. a separate cli command / cronjob should suffice
-func (rs *RedisConfStore) AddJailed(ip net.IP, expiration time.Duration) {
+func (rs *RedisConfStore) AddPrisoner(ip net.IP, expiration time.Duration) {
 	rs.conf.Lock()
 	defer rs.conf.Unlock()
 
@@ -159,6 +158,18 @@ func (rs *RedisConfStore) AddJailed(ip net.IP, expiration time.Duration) {
 			rs.logger.Errorf("error setting hashmap: %v, for key: %v, err: %v", redisJailedSetKey, ip.String, res.Err())
 		}
 	}()
+}
+
+// TODO(mk)
+func (rs *RedisConfStore) PruneAllPrisoners() error {
+
+	return nil
+}
+
+// TODO(mk)
+func (rs *RedisConfStore) PruneExpiredPrisoners() error {
+
+	return nil
 }
 
 func (rs *RedisConfStore) GetBlacklist() []net.IPNet {
