@@ -46,7 +46,7 @@ type MetricReporter interface {
 	HandledBlacklist(request Request, whitelisted bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimit(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
 	HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration)
-	HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter)
+	HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
 	CurrentGlobalLimit(limit Limit)
@@ -152,7 +152,7 @@ func (d *DataDogReporter) HandledRatelimitWithRoute(request Request, ratelimited
 	d.enqueue(f)
 }
 
-func (d *DataDogReporter) HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
+func (d *DataDogReporter) HandledJail(request Request, banned bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
 	mo := MetricOption{}
 	for _, fn := range setters {
 		fn(&mo)
@@ -160,7 +160,7 @@ func (d *DataDogReporter) HandledJail(request Request, jailed bool, errorOccurre
 	tags := append([]string{}, d.defaultTags...)
 	tags = append(tags, mo.additionalTags...)
 	f := func() {
-		bannedTag := bannedKey + ":" + strconv.FormatBool(jailed)
+		bannedTag := bannedKey + ":" + strconv.FormatBool(banned)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		routeTag := routeKey + ":" + request.Path
 		tags := append(tags, []string{bannedTag, errorTag, routeTag}...)
@@ -280,7 +280,7 @@ func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorO
 func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 }
 
-func (n NullReporter)  HandledJail(request Request, jailed bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
+func (n NullReporter)  HandledJail(request Request, blocked bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
 }
 
 func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {

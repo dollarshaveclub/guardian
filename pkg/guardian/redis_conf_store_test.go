@@ -584,5 +584,33 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 	if !cmp.Equal(got, newJail) {
 		t.Errorf("expected: %v, received: %v", newJail, got)
 	}
+}
 
+func TestConfStorePrisoners(t *testing.T) {
+	c, s := newTestConfStore(t)
+	defer s.Close()
+
+	expiredPrisoner := net.ParseIP("1.1.1.1")
+	currentPrisoner := net.ParseIP("2.2.2.2")
+
+	c.AddPrisoner(expiredPrisoner, 0 * time.Millisecond)
+	c.AddPrisoner(currentPrisoner, 24 * time.Hour)
+
+	prisoners, err := c.FetchPrisoners()
+	if err != nil {
+		t.Errorf("received err: %v", err)
+	}
+
+	expiredPrisoners, err := c.FetchExpiredPrisoners()
+	if err != nil {
+		t.Errorf("received err: %v", err)
+	}
+
+	if _, found := prisoners[currentPrisoner.String()]; !found || len(prisoners) != 1 {
+		t.Errorf("expected prisoner: %v", currentPrisoner)
+	}
+
+	if _, found := expiredPrisoners[expiredPrisoner.String()]; !found || len(expiredPrisoners) != 1 {
+		t.Errorf("expected expired prisoner: %v", expiredPrisoner)
+	}
 }

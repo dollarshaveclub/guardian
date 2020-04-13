@@ -22,7 +22,7 @@ type CondRequestBlockerFunc func(context.Context, Request) (stop, blocked bool, 
 func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, jailer Jailer, rateLimiters ...RateLimiter) RequestBlockerFunc {
 	condWhitelistFunc := CondStopOnWhitelistFunc(whitelister)
 	condBlacklistFunc := CondStopOnBlacklistFunc(blacklister)
-	condJailerFunc := CondStopOnJailed(jailer)
+	condJailerFunc := CondStopOnBanned(jailer)
 	rbfs := []CondRequestBlockerFunc{condWhitelistFunc, condBlacklistFunc, condJailerFunc}
 	for _, rl := range rateLimiters {
 		rbfs = append(rbfs, CondStopOnBlockOrError(rl))

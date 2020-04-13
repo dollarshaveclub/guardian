@@ -19,21 +19,25 @@ type Jail struct {
 	BanDuration time.Duration `yaml:"ban_duration"`
 }
 
-// A Jailer can determine if the requests from a client has met the conditions of a Jail's Limit.
-// If the limit has been exceeded, the Jailer should mark the ip as "jailed" for the entire BanDuration
-type Jailer interface {
-	IsJailed(ctx context.Context, request Request) (bool, error)
+func (j Jail) String() string {
+	return fmt.Sprintf("%v, BanDuration: %v", j.Limit, j.BanDuration)
 }
 
-// CondStopOnJailed uses a jailer to determine if a request should be blocked or not. It will also stop further processing
-// on the request if the client ip is jailed.
-func CondStopOnJailed(jailer Jailer) CondRequestBlockerFunc {
+// A Jailer can determine if the requests from a client has met the conditions of a Jail's Limit.
+// If the limit has been exceeded, the Jailer should mark the ip as Banned for the entire BanDuration.
+type Jailer interface {
+	IsBanned(ctx context.Context, request Request) (bool, error)
+}
+
+// CondStopOnBanned uses a jailer to determine if a request should be blocked or not. It will also stop further processing
+// on the request if the client ip is banned.
+func CondStopOnBanned(jailer Jailer) CondRequestBlockerFunc {
 	return func(ctx context.Context, req Request) (bool, bool, uint32, error) {
-		jailed, err := jailer.IsJailed(ctx, req)
+		banned, err := jailer.IsBanned(ctx, req)
 		if err != nil {
-			return false, false, RequestsRemainingMax, errors.Wrap(err, "error checking if request is jailed")
+			return false, false, RequestsRemainingMax, errors.Wrap(err, "error checking if request is banned")
 		}
-		if jailed {
+		if banned {
 			return true, true, 0, nil
 		}
 		return false, false, RequestsRemainingMax, nil
@@ -89,23 +93,23 @@ type GenericJailer struct {
 	store        PrisonerStore
 	counter      Counter
 	logger       logrus.FieldLogger
-	onJailHandled []JailedHandledHook
+	onJailsHandled []JailsHandledHook
 }
 
-type JailedHandledHook func(req Request, jailed bool, dur time.Duration, err error)
+type JailsHandledHook func(req Request, blocked bool, dur time.Duration, err error)
 
-func OnGenericJailerHandled(mr MetricReporter) JailedHandledHook {
-	return func(req Request, jailed bool, dur time.Duration, err error) {
+func OnGenericJailerHandled(mr MetricReporter) JailsHandledHook {
+	return func(req Request, blocked bool, dur time.Duration, err error) {
 		opts := []MetricOptionSetter{}
-		if jailed {
-			// Only set the routes for requests that were jailed. This way, we know the cardinality of the custom metrics.
+		if blocked {
+			// Only set the routes for requests that were blocked. This way, we know the cardinality of the custom metrics.
 			opts = append(opts, WithRoute(req.Path))
 		}
-		mr.HandledJail(req, jailed, err != nil, dur, opts...)
+		mr.HandledJail(req, blocked, err != nil, dur, opts...)
 	}
 }
 
-func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (jailed bool, err error) {
+func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned bool, err error) {
 	if gj.keyFunc == nil || gj.jailProvider == nil || gj.counter == nil || gj.logger == nil || gj.store == nil {
 		gj.logger.Error("misconfigured generic jailer: missing required field")
 		return false, nil
@@ -113,14 +117,15 @@ func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (jailed 
 
 	start := time.Now().UTC()
 	defer func() {
-		for _, fn := range gj.onJailHandled {
-			fn(request, jailed, time.Since(start), err)
+		for _, fn := range gj.onJailsHandled {
+			fn(request, banned, time.Since(start), err)
 		}
 	}()
 
 	ip := net.ParseIP(request.RemoteAddress)
-	if gj.store.IsPrisoner(ip) {
-		return true, nil
+	banned = gj.store.IsPrisoner(ip)
+	if banned {
+		return banned, nil
 	}
 
 	jail := gj.jailProvider.GetJail(request)
@@ -140,14 +145,13 @@ func (gj *GenericJailer) IsJailed(ctx context.Context, request Request) (jailed 
 		return false, err
 	}
 
-	banned := blocked || currCount > jail.Limit.Count
+	banned = blocked || currCount > jail.Limit.Count
 	if banned {
 		gj.store.AddPrisoner(ip, jail.BanDuration)
 		gj.logger.Debugf("banning ip: %v, due to jail: %v", ip.String(), jail)
-		return true, nil
 	}
 
-	return false, nil
+	return banned, nil
 }
 
 func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter, s PrisonerStore, mr MetricReporter) *GenericJailer {
@@ -158,6 +162,6 @@ func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter
 		counter:      c,
 		logger:       logger,
 		// TODO: Expose this field for users to configure as needed
-		onJailHandled: []JailedHandledHook{OnGenericJailerHandled(mr)},
+		onJailsHandled: []JailsHandledHook{OnGenericJailerHandled(mr)},
 	}
 }

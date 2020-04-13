@@ -214,7 +214,11 @@ func main() {
 		if allPrisoners != nil && *allPrisoners {
 			all = true
 		}
-		prunePrisoners(redisConfStore, all)
+		n , err := prunePrisoners(redisConfStore, all)
+		if err != nil {
+			fatalerror(fmt.Errorf("error pruning prisoners: %v", err))
+		}
+		fmt.Printf("removed %d prisoners\n", n)
 	}
 }
 
@@ -416,7 +420,7 @@ func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error)
 	return store.FetchJails()
 }
 
-func prunePrisoners(store *guardian.RedisConfStore, allPrisoners bool) error {
+func prunePrisoners(store *guardian.RedisConfStore, allPrisoners bool) (int64, error) {
 	if allPrisoners {
 		return store.PruneAllPrisoners()
 	}
