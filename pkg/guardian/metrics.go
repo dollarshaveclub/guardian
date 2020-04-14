@@ -23,6 +23,7 @@ const rateLimitCountMetricName = "rate_limit.count"
 const rateLimitDurationMetricName = "rate_limit.duration"
 const rateLimitEnabledMetricName = "rate_limit.enabled"
 const routeRateLimitMetricName = "route_rate_limit.count"
+const jailMetricName = "jail.count"
 const whitelistCountMetricName = "whitelist.count"
 const blacklistCountMetricName = "blacklist.count"
 const bannedCountMetricName = "banned.count"
@@ -217,7 +218,7 @@ func (d *DataDogReporter) CurrentRouteJail(route string, jail Jail) {
 		dk := durationKey + ":" + jail.Limit.Duration.String()
 		ek := enabledKey + ":" + strconv.FormatBool(jail.Limit.Enabled)
 		bdk := banDurationKey + ":" + jail.BanDuration.String()
-		d.client.Gauge(routeRateLimitMetricName, float64(jail.Limit.Count), append(d.defaultTags, rk, dk, ek, bdk), 1)
+		d.client.Gauge(jailMetricName, float64(jail.Limit.Count), append(d.defaultTags, rk, dk, ek, bdk), 1)
 	}
 	d.enqueue(f)
 }
