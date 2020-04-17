@@ -43,8 +43,7 @@ func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 			if remaining < minRemaining {
 				minRemaining = remaining
 			}
-
-			if stop || blocked {
+			if stop || blocked  {
 				return blocked, minRemaining, nil
 			}
 		}

@@ -586,31 +586,56 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 	}
 }
 
-func TestConfStorePrisoners(t *testing.T) {
+func TestConfStoreAddRemovePrisoners(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	expiredPrisoner := net.ParseIP("1.1.1.1")
-	currentPrisoner := net.ParseIP("2.2.2.2")
-
-	c.AddPrisoner(expiredPrisoner, 0 * time.Millisecond)
-	c.AddPrisoner(currentPrisoner, 24 * time.Hour)
-
-	prisoners, err := c.FetchPrisoners()
-	if err != nil {
-		t.Errorf("received err: %v", err)
+	expiredPrisoner :="1.1.1.1"
+	expiredJail := Jail{
+		Limit:       Limit{
+			Count:    10,
+			Duration: time.Minute,
+			Enabled:  true,
+		},
+		BanDuration: 1 * time.Second,
+	}
+	currentPrisoner := "2.2.2.2"
+	currentJail := Jail{
+		Limit: Limit{
+			Count:    10,
+			Duration: time.Minute,
+			Enabled:  true,
+		},
+		BanDuration: 24 * time.Hour,
 	}
 
-	expiredPrisoners, err := c.FetchExpiredPrisoners()
-	if err != nil {
-		t.Errorf("received err: %v", err)
+	c.AddPrisoner(expiredPrisoner, expiredJail)
+	c.AddPrisoner(currentPrisoner, currentJail)
+	in := func(ip string, prisoners []Prisoner) bool {
+		for _, p := range prisoners {
+			if p.IP.String() == ip {
+				return true
+			}
+		}
+		return false
+	}
+	prisoners := c.FetchPrisoners()
+	if in(expiredPrisoner,prisoners) {
+		t.Errorf("expected expired prisoner to be removed: %v", expiredPrisoner)
 	}
 
-	if _, found := prisoners[currentPrisoner.String()]; !found || len(prisoners) != 1 {
+	if !in(currentPrisoner, prisoners) {
 		t.Errorf("expected prisoner: %v", currentPrisoner)
 	}
 
-	if _, found := expiredPrisoners[expiredPrisoner.String()]; !found || len(expiredPrisoners) != 1 {
-		t.Errorf("expected expired prisoner: %v", expiredPrisoner)
+	n, err := c.RemovePrisoners([]net.IP{net.ParseIP(currentPrisoner)})
+	if err != nil {
+		t.Errorf("received unexpected error when removing prisoner: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected %d prisoner(s) removed, received %d", 1, n)
+	}
+	if in(currentPrisoner, prisoners) {
+		t.Errorf("expected prisoner %v to be removed", currentPrisoner)
 	}
 }

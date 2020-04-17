@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"net"
 	"net/url"
 	"time"
 )
@@ -15,8 +14,8 @@ import (
 // In the context of Guardian, a Jail is a combination of a Limit and a BanDuration.
 // If the Limit is reached, the the IP will be banned for the BanDuration.
 type Jail struct {
-	Limit       Limit         `yaml:"limit""`
-	BanDuration time.Duration `yaml:"ban_duration"`
+	Limit       Limit         `yaml:"limit"" json:"limit"`
+	BanDuration time.Duration `yaml:"ban_duration" json:"ban_duration"`
 }
 
 func (j Jail) String() string {
@@ -46,8 +45,8 @@ func CondStopOnBanned(jailer Jailer) CondRequestBlockerFunc {
 
 // PrisonerStore can check if a client ip is a prisoner and also add prisoners
 type PrisonerStore interface {
-	IsPrisoner(ip net.IP) bool
-	AddPrisoner(ip net.IP, expiration time.Duration)
+	IsPrisoner(remoteAddress string) bool
+	AddPrisoner(remoteAddress string, jail Jail)
 }
 
 // A JailProvider is a generic interface for determining which jail (if any) applies to a request
@@ -102,8 +101,8 @@ func OnGenericJailerHandled(mr MetricReporter) JailsHandledHook {
 	return func(req Request, blocked bool, dur time.Duration, err error) {
 		opts := []MetricOptionSetter{}
 		if blocked {
-			// Only set the routes for requests that were blocked. This way, we know the cardinality of the custom metrics.
-			opts = append(opts, WithRoute(req.Path))
+			// Only set additional tags for requests that were blocked. This way, we know the cardinality of the custom metrics.
+			opts = append(opts, WithRemoteAddress(req.RemoteAddress))
 		}
 		mr.HandledJail(req, blocked, err != nil, dur, opts...)
 	}
@@ -122,8 +121,7 @@ func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned 
 		}
 	}()
 
-	ip := net.ParseIP(request.RemoteAddress)
-	banned = gj.store.IsPrisoner(ip)
+	banned = gj.store.IsPrisoner(request.RemoteAddress)
 	if banned {
 		return banned, nil
 	}
@@ -147,8 +145,8 @@ func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned 
 
 	banned = blocked || currCount > jail.Limit.Count
 	if banned {
-		gj.store.AddPrisoner(ip, jail.BanDuration)
-		gj.logger.Debugf("banning ip: %v, due to jail: %v", ip.String(), jail)
+		gj.store.AddPrisoner(request.RemoteAddress, jail)
+		gj.logger.Debugf("banning ip: %v, due to jail: %v", request.RemoteAddress, jail)
 	}
 
 	return banned, nil

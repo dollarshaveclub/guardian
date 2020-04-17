@@ -1,6 +1,7 @@
 package main
 
 import (
+	//"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -54,14 +55,15 @@ func main() {
 	removeRouteRateLimitStrings := removeRouteRateLimitsCmd.Arg("routes", "Comma seperated list of routes to remove").Required().String()
 	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route")
 
-	// Jail
+	// Jails
 	setJailsCmd := app.Command("set-jails", "Sets rate limits for provided routes")
 	jailsConfigFilePath := setJailsCmd.Arg("jail-config-file", "Path to configuration file").Required().String()
 	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes")
 	removeJailsArgs := removeJailsCmd.Arg("jail-routes", "Comma separated list of jails to remove. Use the name of the route").Required().String()
 	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
-	prunePrisonersCmd := app.Command("prune-prisoners", "Removes prisoners from the prisoners list. By default, only removes prisoners who have served their time.")
-	allPrisoners := prunePrisonersCmd.Arg("all-prisoners", "Option to remove all of the prisoners from the prisoners list").Bool()
+	getPrisonersCmd := app.Command("get-prisoners", "List all prisoners")
+	removePrisonersCmd := app.Command("remove-prisoners", "Removes prisoners from")
+	prisoners := removePrisonersCmd.Arg("prisoners", "Comma separated list of ip address to remove").Required().String()
 
 	// Report Only
 	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
@@ -209,16 +211,19 @@ func main() {
 			fatalerror(fmt.Errorf("error marshaling jails yaml: %v", err))
 		}
 		fmt.Println(string(configYaml))
-	case prunePrisonersCmd.FullCommand():
-		all := false
-		if allPrisoners != nil && *allPrisoners {
-			all = true
-		}
-		n , err := prunePrisoners(redisConfStore, all)
+	case removePrisonersCmd.FullCommand():
+		n, err := removePrisoners(redisConfStore, *prisoners)
 		if err != nil {
-			fatalerror(fmt.Errorf("error pruning prisoners: %v", err))
+			fatalerror(fmt.Errorf("error removing prisoners: %v", err))
 		}
 		fmt.Printf("removed %d prisoners\n", n)
+	case getPrisonersCmd.FullCommand():
+		prisoners := getPrisoners(redisConfStore)
+		prisonersJson, err := yaml.Marshal(prisoners)
+		if err != nil {
+			fatalerror(fmt.Errorf("error marshaling prisoners: %v", err))
+		}
+		fmt.Println(string(prisonersJson))
 	}
 }
 
@@ -420,13 +425,17 @@ func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error)
 	return store.FetchJails()
 }
 
-func prunePrisoners(store *guardian.RedisConfStore, allPrisoners bool) (int64, error) {
-	if allPrisoners {
-		return store.PruneAllPrisoners()
-	}
-	return store.PruneExpiredPrisoners()
+func getPrisoners(store *guardian.RedisConfStore) (prisoners []guardian.Prisoner) {
+	return store.FetchPrisoners()
 }
 
+func removePrisoners(store *guardian.RedisConfStore, prisoners string) (int64, error) {
+	input := []net.IP{}
+	for _, p := range strings.Split(prisoners, ",") {
+		input = append(input, net.ParseIP(p))
+	}
+	return store.RemovePrisoners(input)
+}
 
 func fatalerror(err error) {
 	fmt.Fprintf(os.Stderr, err.Error())

@@ -218,12 +218,13 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	}
 }
 
+
 func TestJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
 
 	config := guardianConfig{
-		whitelist:                []string{},
+		whitelist:                []string{"192.168.1.1/32"},
 		blacklist:                []string{},
 		limitCount:               5,
 		limitDuration:            time.Minute,
@@ -254,7 +255,9 @@ func TestJails(t *testing.T) {
 			}
 
 			res := GET(t, "192.168.1.43", j.Route)
+			whitelistedRes := GET(t, "192.168.1.1", j.Route)
 			res.Body.Close()
+			whitelistedRes.Body.Close()
 
 			want := 200
 			if (i >= j.Jail.Limit.Count && j.Jail.Limit.Enabled) || banned {
@@ -264,6 +267,10 @@ func TestJails(t *testing.T) {
 
 			if res.StatusCode != want {
 				t.Fatalf("wanted %v, got %v, iteration %v, route: %v", want, res.StatusCode, i, j.Route)
+			}
+
+			if whitelistedRes.StatusCode != 200 {
+				t.Fatalf("whitelisted ip received unexpected status code: wanted %v, got %v, iteration %d, route: %v", 200, whitelistedRes.StatusCode, i, j.Route)
 			}
 		}
 	}

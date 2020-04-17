@@ -17,6 +17,7 @@ import (
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
 	"github.com/dollarshaveclub/guardian/pkg/rate_limit_grpc"
 	"github.com/go-redis/redis"
+
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"gopkg.in/alecthomas/kingpin.v2"
