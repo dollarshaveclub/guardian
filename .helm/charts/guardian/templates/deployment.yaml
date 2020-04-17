@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "guardian.fullname" . }}
+  labels:
+    {{- include "guardian.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "guardian.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "guardian.selectorLabels" . | nindent 8 }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - /bin/guardian
+            - --dogstatsd-tag="ingress_class:{{ .Values.ingressClass }}"
+            - --dogstatsd-tag="deployment_color:{{ .Values.deploymentColor }}"
+            {{- range $value := .Values.guardian.defaultWhitelist }}
+            - --whitelist-cidr={{ $value }}
+            {{- end }}
+            {{- range $value := .Values.guardian.defaultBlacklist }}
+            - --blacklist-cidr={{ $value }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.app.port }}
+              name: grpc
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.app.port }}
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.app.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 1
+            timeoutSeconds: 1
+          env:
+            - name: GUARDIAN_FLAG_LOG_LEVEL
+              value: {{ .Values.guardian.logLevel | quote }}
+            - name: GUARDIAN_FLAG_ADDRESS
+              value: '{{ .Values.guardian.address}}:{{ .Values.app.port }}'
+            - name: GUARDIAN_FLAG_REDIS_ADDRESS
+              value: {{ .Values.guardian.redisAddress | quote }}
+            - name: GUARDIAN_FLAG_REDIS_POOL_SIZE
+              value: {{ .Values.guardian.redisPoolSize | quote }}
+            - name: GUARDIAN_FLAG_DOGSTATSD_ADDRESS
+              value: {{ .Values.guardian.dogstatsdAddress | quote }}
+            - name: GUARDIAN_FLAG_REPORT_ONLY
+              value: {{ .Values.guardian.reportOnly | quote }}
+            - name: GUARDIAN_FLAG_LIMIT
+              value: {{ .Values.guardian.limit | quote }}
+            - name: GUARDIAN_FLAG_LIMIT_DURATION
+              value: {{ .Values.guardian.limitDuration | quote }}
+            - name: GUARDIAN_FLAG_LIMIT_ENABLED
+              value: {{ .Values.guardian.limitEnabled | quote }}
+            - name: GUARDIAN_FLAG_CONF_UPDATE_INTERVAL
+              value: {{ .Values.guardian.confUpdateInterval | quote }}
+            - name: GUARDIAN_FLAG_SYNCHRONOUS
+              value: {{ .Values.guardian.synchronous | quote }}
+            - name: GUARDIAN_FLAG_INIT_CONFIG
+              value: '{{ .Values.guardian.initConfig }}'
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

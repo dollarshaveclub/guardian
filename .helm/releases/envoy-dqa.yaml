@@ -1,0 +1,81 @@
+files:
+  envoy.yaml: |-
+    static_resources:
+      listeners:
+      - name: listener_0
+        address:
+          socket_address: { address: 0.0.0.0, port_value: 10000 }
+        filter_chains:
+        - filters:
+          - name: envoy.http_connection_manager
+            config:
+              stat_prefix: ingress_http
+              use_remote_address: false
+              xff_num_trusted_hops: 1
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: local_service
+                  domains: ["*"]
+                  rate_limits:
+                  - actions:
+                    - remote_address: {}
+                  - actions:
+                    - request_headers:
+                        header_name: :authority
+                        descriptor_key: authority
+                  - actions:
+                    - request_headers:
+                        header_name: :method
+                        descriptor_key: method
+                  - actions:
+                    - request_headers:
+                        header_name: :path
+                        descriptor_key: path
+                  - actions:
+                    - request_headers:
+                        header_name: x-forwarded-for
+                        descriptor_key: header.x-forwarded-for
+                  routes:
+                  - match:
+                      prefix: "/"
+                    route:
+                      host_rewrite: www.google.com
+                      cluster: service_google
+              http_filters:
+              - name: envoy.rate_limit
+                config:
+                  domain: edge_proxy_per_ip
+                  timeout: { nanos: "50000000" }
+              - name: envoy.router
+      clusters:
+      - name: service_google
+        connect_timeout: 0.25s
+        type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+        lb_policy: ROUND_ROBIN
+        hosts:
+          - socket_address:
+              address: google.com
+              port_value: 443
+        tls_context:
+          sni: www.google.com
+      - name: guardian
+        connect_timeout: { seconds: 5 }
+        type: STRICT_DNS
+        hosts:
+        - socket_address:
+            address: guardian
+            port_value: 3000
+        lb_policy: ROUND_ROBIN
+        http2_protocol_options: {}
+    rate_limit_service:
+      grpc_service:
+        envoy_grpc:
+          cluster_name: guardian
+    admin:
+      access_log_path: /dev/null
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 9901
