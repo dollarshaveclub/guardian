@@ -64,6 +64,8 @@ func (pc *prisonersCache) getPrisoner(remoteAddress string) (Prisoner, bool) {
 }
 
 func (pc *prisonersCache) removePrisoner(remoteAddress string) bool {
+	pc.mutex.Lock()
+	defer pc.mutex.Unlock()
 	return pc.cache.Remove(to4(net.ParseIP(remoteAddress).To4()))
 }
 
@@ -93,6 +95,8 @@ func (pc *prisonersCache) getPrisoners() []Prisoner {
 }
 
 func (pc *prisonersCache) purge() {
+	pc.mutex.Lock()
+	defer pc.mutex.Unlock()
 	pc.cache.Purge()
 }
 

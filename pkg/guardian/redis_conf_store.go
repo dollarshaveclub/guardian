@@ -179,6 +179,7 @@ func (rs *RedisConfStore) RemovePrisoners(prisoners []net.IP) (numDeleted int64,
 		rs.logger.Errorf("error obtaining lock to remove prisoners: %v", err)
 		return
 	}
+	// TODO (mk): remove from cache too?!
 	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
 	cmd := rs.redis.HDel(redisPrisonersKey, p...)
 	return cmd.Result()
@@ -186,6 +187,7 @@ func (rs *RedisConfStore) RemovePrisoners(prisoners []net.IP) (numDeleted int64,
 
 func (rs *RedisConfStore) FetchPrisoners() []Prisoner {
 	rs.pipelinedFetchConf()
+	rs.logger.Debugf("fetching prisoners!!!\n")
 	return rs.conf.prisoners.getPrisoners()
 }
 
@@ -879,8 +881,10 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 				continue
 			}
 			if time.Now().UTC().Before(prisoner.Expiry) {
+				rs.logger.Printf("adding %v to prisoners\n", prisoner.IP.String())
 				rs.conf.prisoners.addPrisonerFromStore(prisoner)
 			} else {
+				rs.logger.Printf("removing %v from prisoners\n", prisoner.IP.String())
 				expiredPrisoners = append(expiredPrisoners, ip)
 			}
 		}

@@ -597,7 +597,7 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 			Duration: time.Minute,
 			Enabled:  true,
 		},
-		BanDuration: 1 * time.Second,
+		BanDuration: 0 * time.Millisecond,
 	}
 	currentPrisoner := "2.2.2.2"
 	currentJail := Jail{
@@ -608,9 +608,10 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 		},
 		BanDuration: 24 * time.Hour,
 	}
-
+	
 	c.AddPrisoner(expiredPrisoner, expiredJail)
 	c.AddPrisoner(currentPrisoner, currentJail)
+
 	in := func(ip string, prisoners []Prisoner) bool {
 		for _, p := range prisoners {
 			if p.IP.String() == ip {
@@ -635,6 +636,8 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 	if n != 1 {
 		t.Errorf("expected %d prisoner(s) removed, received %d", 1, n)
 	}
+	prisoners = c.FetchPrisoners()
+
 	if in(currentPrisoner, prisoners) {
 		t.Errorf("expected prisoner %v to be removed", currentPrisoner)
 	}
