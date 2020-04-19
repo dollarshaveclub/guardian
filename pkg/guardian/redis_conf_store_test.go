@@ -608,9 +608,11 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 		},
 		BanDuration: 24 * time.Hour,
 	}
-	
+
 	c.AddPrisoner(expiredPrisoner, expiredJail)
 	c.AddPrisoner(currentPrisoner, currentJail)
+
+	time.Sleep(100 * time.Millisecond)
 
 	in := func(ip string, prisoners []Prisoner) bool {
 		for _, p := range prisoners {
