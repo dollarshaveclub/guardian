@@ -60,20 +60,20 @@
   version = "2.4"
 
 [[projects]]
-  digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
-  name = "github.com/davecgh/go-spew"
-  packages = ["spew"]
-  pruneopts = "UT"
-  revision = "8991bc29aa16c548c550c7ff78260e27b9ab7c73"
-  version = "v1.1.1"
-
-[[projects]]
   digest = "1:6259108f909606ed47d4eacbe1b4e3f1f26121b7868daff6ac005e912eafdd67"
   name = "github.com/bsm/redislock"
   packages = ["."]
   pruneopts = "UT"
   revision = "3d76f17a9f1e22d11521f78267ce1795641ae596"
   version = "v0.4.3"
+
+[[projects]]
+  digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  pruneopts = "UT"
+  revision = "8991bc29aa16c548c550c7ff78260e27b9ab7c73"
+  version = "v1.1.1"
 
 [[projects]]
   digest = "1:87e9faab50e9bfdb60524e40f20b0ab667f2f3171adcd3dd27fab270ef2a4a6b"
@@ -408,8 +408,8 @@
     "cloud.google.com/go/profiler",
     "github.com/DataDog/datadog-go/statsd",
     "github.com/alicebob/miniredis",
-    "github.com/davecgh/go-spew/spew",
     "github.com/bsm/redislock",
+    "github.com/davecgh/go-spew/spew",
     "github.com/envoyproxy/go-control-plane/envoy/api/v2/ratelimit",
     "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v2",
     "github.com/go-redis/redis",
