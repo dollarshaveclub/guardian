@@ -28,7 +28,7 @@ guardian:
   limitEnabled: "true"
   confUpdateInterval: 10s
   synchronous: false
-  initConfig: true
+  initConfig: false
   defaultWhitelist: []
   defaultBlacklist: []
 

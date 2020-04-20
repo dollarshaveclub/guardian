@@ -331,29 +331,44 @@ func (rs *RedisConfStore) init() error {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
 
-	rs.logger.Debug("Initializing whitelist")
-	if err := rs.AddWhitelistCidrs(rs.conf.whitelist); err != nil {
-		return errors.Wrap(err, "error initializing whitelist")
+	if rs.redis.Get(redisIPWhitelistKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing whitelist")
+		if err := rs.AddWhitelistCidrs(rs.conf.whitelist); err != nil {
+			return errors.Wrap(err, "error initializing whitelist")
+		}
 	}
 
-	rs.logger.Debug("Initializing blacklist")
-	if err := rs.AddBlacklistCidrs(rs.conf.blacklist); err != nil {
-		return errors.Wrap(err, "error initializing blacklist")
+	if rs.redis.Get(redisIPBlacklistKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing blacklist")
+		if err := rs.AddBlacklistCidrs(rs.conf.blacklist); err != nil {
+			return errors.Wrap(err, "error initializing blacklist")
+		}
 	}
 
-	rs.logger.Debug("Initializing limit")
-	if err := rs.SetLimit(rs.conf.limit); err != nil {
-		return errors.Wrap(err, "error initializing limit")
+	if rs.redis.Get(redisLimitEnabledKey).Err() == redis.Nil ||
+		rs.redis.Get(redisLimitDurationKey).Err() == redis.Nil ||
+		rs.redis.Get(redisLimitCountKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing limit")
+		if err := rs.SetLimit(rs.conf.limit); err != nil {
+			return errors.Wrap(err, "error initializing limit")
+		}
 	}
 
-	rs.logger.Debug("Initializing report only")
-	if err := rs.SetReportOnly(rs.conf.reportOnly); err != nil {
-		return errors.Wrap(err, "error initializing report only")
+
+	if rs.redis.Get(redisReportOnlyKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing report only")
+		if err := rs.SetReportOnly(rs.conf.reportOnly); err != nil {
+			return errors.Wrap(err, "error initializing report only")
+		}
 	}
 
-	rs.logger.Debug("Initializing route rate limits")
-	if err := rs.SetRouteRateLimits(rs.conf.routeRateLimits); err != nil {
-		return errors.Wrap(err, "error initializing route rate limits")
+	if rs.redis.Get(redisRouteRateLimitsEnabledKey).Err() == redis.Nil ||
+		rs.redis.Get(redisRouteRateLimitsCountKey).Err() == redis.Nil ||
+		rs.redis.Get(redisRouteRateLimitsDurationKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing route rate limits")
+		if err := rs.SetRouteRateLimits(rs.conf.routeRateLimits); err != nil {
+			return errors.Wrap(err, "error initializing route rate limits")
+		}
 	}
 
 	rs.logger.Debug("Success initializing conf")
