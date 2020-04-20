@@ -11,7 +11,7 @@ while [ $secs -ge 0 ]; do
 done
 
 printf "\nRunning tests...\n"
-go test ./e2e/
+go test ./e2e/ # TODO (mk): Perhaps have a filter for long running tests
 results=$?
 
 echo "Stopping async guardian..."

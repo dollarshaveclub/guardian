@@ -14,6 +14,7 @@ type Prisoner struct {
 	Expiry time.Time `yaml:"expiry" json:"expiry"`
 }
 
+// prisonersCache maintains a cache of prisoners with a max size.
 type prisonersCache struct {
 	// cache is a lru cache safe for concurrent use by multiple go routines.
 	cache *lru.Cache
@@ -106,8 +107,8 @@ func to4(ip net.IP) [4]byte {
 	return arr
 }
 
-func newPrisonerCache(maxSize int) (*prisonersCache, error) {
-	cache, err := lru.New(maxSize)
+func newPrisonerCache(maxSize uint16) (*prisonersCache, error) {
+	cache, err := lru.New(int(maxSize))
 	if err != nil {
 		return nil, fmt.Errorf("unable to create PrisonerCache: %v", err)
 	}

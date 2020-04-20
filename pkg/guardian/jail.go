@@ -87,11 +87,11 @@ func routeJailKeyFunc(req Request) string {
 }
 
 type GenericJailer struct {
-	keyFunc      func(req Request) string
-	jailProvider JailProvider
-	store        PrisonerStore
-	counter      Counter
-	logger       logrus.FieldLogger
+	keyFunc        func(req Request) string
+	jailProvider   JailProvider
+	store          PrisonerStore
+	counter        Counter
+	logger         logrus.FieldLogger
 	onJailsHandled []JailsHandledHook
 }
 

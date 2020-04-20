@@ -218,7 +218,6 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	}
 }
 
-
 func TestJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
@@ -281,7 +280,7 @@ func TestSetJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
 	config := guardianConfig{
-		jailConfigPath:           configFilePath,
+		jailConfigPath: configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 

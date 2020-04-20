@@ -117,7 +117,6 @@ func main() {
 	jailer := guardian.NewGenericJailer(redisConfStore, logger.WithField("context", "route-jailer"), redisCounter, redisConfStore, reporter)
 	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, redisCounter)
 	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, redisCounter)
-
 	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, jailer, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)

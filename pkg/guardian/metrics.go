@@ -185,7 +185,6 @@ func (d *DataDogReporter) HandledAddPrisoner(ip net.IP, jail Jail) {
 	d.enqueue(f)
 }
 
-
 func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred bool) {
 	f := func() {
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
