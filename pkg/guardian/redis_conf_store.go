@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-redis/redis"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +25,7 @@ const redisRouteRateLimitsDurationKey = "guardian_conf:route_limits:duration"
 const redisRouteRateLimitsCountKey = "guardian_conf:route_limits:count"
 
 // NewRedisConfStore creates a new RedisConfStore
-func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly bool, logger logrus.FieldLogger, mr MetricReporter) *RedisConfStore {
+func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly, initConfig bool, logger logrus.FieldLogger, mr MetricReporter) *RedisConfStore {
 	if defaultWhitelist == nil {
 		defaultWhitelist = []net.IPNet{}
 	}
@@ -43,7 +45,13 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		reportOnly:      defaultReportOnly,
 		routeRateLimits: make(map[url.URL]Limit),
 	}
-	return &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr,}
+	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr,}
+	if initConfig {
+		if err := rcf.init(); err != nil {
+			rcf.logger.Errorf("error initializing config: %v", err)
+		}
+	}
+	return rcf
 }
 
 // RedisConfStore is a configuration provider that uses Redis for persistence
@@ -317,12 +325,62 @@ func (rs *RedisConfStore) RunSync(updateInterval time.Duration, stop <-chan stru
 	}
 }
 
+// init creates configuration if missing from redis
+func (rs *RedisConfStore) init() error {
+	rs.logger.Debug("Initializing conf")
+	rs.conf.RLock()
+	defer rs.conf.RUnlock()
+
+	if rs.redis.Get(redisIPWhitelistKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing whitelist")
+		if err := rs.AddWhitelistCidrs(rs.conf.whitelist); err != nil {
+			return errors.Wrap(err, "error initializing whitelist")
+		}
+	}
+
+	if rs.redis.Get(redisIPBlacklistKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing blacklist")
+		if err := rs.AddBlacklistCidrs(rs.conf.blacklist); err != nil {
+			return errors.Wrap(err, "error initializing blacklist")
+		}
+	}
+
+	if rs.redis.Get(redisLimitEnabledKey).Err() == redis.Nil ||
+		rs.redis.Get(redisLimitDurationKey).Err() == redis.Nil ||
+		rs.redis.Get(redisLimitCountKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing limit")
+		if err := rs.SetLimit(rs.conf.limit); err != nil {
+			return errors.Wrap(err, "error initializing limit")
+		}
+	}
+
+
+	if rs.redis.Get(redisReportOnlyKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing report only")
+		if err := rs.SetReportOnly(rs.conf.reportOnly); err != nil {
+			return errors.Wrap(err, "error initializing report only")
+		}
+	}
+
+	if rs.redis.Get(redisRouteRateLimitsEnabledKey).Err() == redis.Nil ||
+		rs.redis.Get(redisRouteRateLimitsCountKey).Err() == redis.Nil ||
+		rs.redis.Get(redisRouteRateLimitsDurationKey).Err() == redis.Nil {
+		rs.logger.Debug("Initializing route rate limits")
+		if err := rs.SetRouteRateLimits(rs.conf.routeRateLimits); err != nil {
+			return errors.Wrap(err, "error initializing route rate limits")
+		}
+	}
+
+	rs.logger.Debug("Success initializing conf")
+	return nil
+}
+
 func (rs *RedisConfStore) UpdateCachedConf() {
 	rs.logger.Debug("Updating conf")
 
 	rs.logger.Debug("Fetching conf")
 	fetched := rs.pipelinedFetchConf()
-	rs.logger.Debugf("Fetched conf: %#v", fetched)
+	rs.logger.Debugf("Fetched conf: %v", spew.Sdump(fetched))
 
 	rs.conf.Lock()
 	defer rs.conf.Unlock()

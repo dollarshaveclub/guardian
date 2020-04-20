@@ -42,6 +42,7 @@ func main() {
 	profilerProjectID := kingpin.Flag("profiler-project-id", "GCP Stackdriver Profiler project ID").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_PROJECT_ID").String()
 	profilerServiceName := kingpin.Flag("profiler-service-name", "GCP Stackdriver Profiler service name").Default("guardian").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_SERVICE_NAME").String()
 	synchronous := kingpin.Flag("synchronous", "synchronously enforce ratelimit").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SYNCHRONOUS").Bool()
+	initConfig := kingpin.Flag("init", "create missing configuration on startup if needed").Default("false").Envar("GUARDIAN_FLAG_INIT_CONFIG").Bool()
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -94,7 +95,7 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, logger.WithField("context", "redis-conf-provider"), reporter)
+	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, *initConfig, logger.WithField("context", "redis-conf-provider"), reporter)
 	logger.Infof("starting cache update for conf store")
 
 	wg.Add(1)

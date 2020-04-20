@@ -62,10 +62,6 @@
   version = "6.10.2"
 
 [[constraint]]
-  branch = "master"
-  name = "github.com/hashicorp/go-multierror"
-
-[[constraint]]
   name = "github.com/alicebob/miniredis"
   version = "2.4.0"
 
