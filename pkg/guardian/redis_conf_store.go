@@ -33,7 +33,7 @@ const redisJailLimitsCountKey = "guardian_conf:jail:limits:count"
 const redisJailBanDurationKey = "guardian_conf:jail:ban:duration"
 
 // NewRedisConfStore creates a new RedisConfStore
-func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly, initConfig bool, logger logrus.FieldLogger, mr MetricReporter) *RedisConfStore {
+func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaultBlacklist []net.IPNet, defaultLimit Limit, defaultReportOnly, initConfig bool, maxPrisonerCacheSize uint16, logger logrus.FieldLogger, mr MetricReporter) (*RedisConfStore, error) {
 	if defaultWhitelist == nil {
 		defaultWhitelist = []net.IPNet{}
 	}
@@ -47,9 +47,10 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 	}
 
 	locker := redislock.New(redis)
-
-	// Thread safe PrisonersCache allows us to now have to lock the entire conf cache
-	prisoners, _ := newPrisonerCache(1000) // TODO (mk): make maxSize configurable
+	prisoners, err := newPrisonerCache(maxPrisonerCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create prisoner cache: %v", err)
+	}
 
 	defaultConf := conf{
 		whitelist:       defaultWhitelist,
@@ -58,24 +59,21 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		reportOnly:      defaultReportOnly,
 		routeRateLimits: make(map[url.URL]Limit),
 		jails:           make(map[url.URL]Jail),
-		// TODO (mk): Add better comment..
-		// 2 Redis Limitations require us to need to keep track of prisoners and manage when they should expire.
+		// There are a couple limitations in redis that require us to need to keep track of prisoners and manage when they should expire.
 		// 1. Redis Hashmaps and Sets to not support setting TTL of individual keys
 		// 2. We could just rely upon unique keys in the global keyspace and do prefix lookups with the KEYS function, however, these lookups would be O(N).
 		//    N in this case is every single entry within the database. This is not a valid option considering we could have millions of keys and do not want to
 		//    block redis for too long.
-
-		// Prisoners
 		prisoners: prisoners,
 	}
 
 	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr, locker:locker}
 	if initConfig {
 		if err := rcf.init(); err != nil {
-			rcf.logger.Errorf("error initializing config: %v", err)
+			return nil, fmt.Errorf("unable to initialize RedisConfStore: %v", err)
 		}
 	}
-	return rcf
+	return rcf, nil
 }
 
 // RedisConfStore is a configuration provider that uses Redis for persistence
@@ -166,6 +164,9 @@ func (rs *RedisConfStore) AddPrisoner(remoteAddress string, jail Jail) {
 	}()
 }
 
+// RemovePrisoners removes the specified prisoners from the prisoner hash map in Redis.
+// This is intended to be used by the guardian-cli, so therefore it does not run rs.pipelinedFetchConf() or update the
+// prisoners cache.
 func (rs *RedisConfStore) RemovePrisoners(prisoners []net.IP) (numDeleted int64, err error) {
 	if len(prisoners) == 0 {
 		return int64(0), nil
@@ -179,20 +180,36 @@ func (rs *RedisConfStore) RemovePrisoners(prisoners []net.IP) (numDeleted int64,
 		rs.logger.Errorf("error obtaining lock to remove prisoners: %v", err)
 		return
 	}
-	// TODO (mk): remove from cache too?!
 	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
 	cmd := rs.redis.HDel(redisPrisonersKey, p...)
 	return cmd.Result()
 }
 
-func (rs *RedisConfStore) FetchPrisoners() []Prisoner {
-	rs.pipelinedFetchConf()
-	rs.logger.Debugf("fetching prisoners!!!\n")
-	return rs.conf.prisoners.getPrisoners()
-}
+func (rs *RedisConfStore) FetchPrisoners() ([]Prisoner, error) {
+	lock, err := rs.obtainRedisPrisonersLock()
+	if err != nil {
+		return nil, fmt.Errorf("unable to obtain lock fetching prisoners: %v", err)
+	}
 
-func (rs *RedisConfStore) GetPrisoners() []Prisoner {
-	return rs.conf.prisoners.getPrisoners()
+	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
+	prisonersCmd := rs.redis.HGetAll(redisPrisonersKey)
+	prisonersRes, err := prisonersCmd.Result()
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch prisoners: %v", err)
+	}
+	prisoners := []Prisoner{}
+	for _, prisonerJson := range prisonersRes {
+		var prisoner Prisoner
+		err := json.Unmarshal([]byte(prisonerJson), &prisoner)
+		if err != nil {
+			rs.logger.WithError(err).Warnf("unable to unmarshal json: %v", err)
+			continue
+		}
+		if time.Now().UTC().Before(prisoner.Expiry) {
+			prisoners = append(prisoners, prisoner)
+		}
+	}
+	return prisoners, nil
 }
 
 func (rs *RedisConfStore) GetBlacklist() []net.IPNet {
@@ -648,7 +665,7 @@ func (rs *RedisConfStore) obtainRedisPrisonersLock() (*redislock.Lock, error) {
 	expRetry := redislock.ExponentialBackoff(32 * time.Millisecond, 128 * time.Millisecond)
 	// Default read/write timeout for the go-redis/redis client is 3 seconds.
 	// The lock TTL should be greater than the read/write timeout.
-	lock, err := rs.locker.Obtain(redisPrisonersLockKey, 5 * time.Second, &redislock.Options{
+	lock, err := rs.locker.Obtain(redisPrisonersLockKey, 6 * time.Second, &redislock.Options{
 		RetryStrategy: redislock.LimitRetry(expRetry, 5),
 		Metadata:      "",
 	})
@@ -870,7 +887,8 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
 	expiredPrisoners := []string{}
 	prisonersCmd := rs.redis.HGetAll(redisPrisonersKey)
-	// TODO (mk): only purge on successfully reading from redis?
+	// Note: In order to match the rest of the configuration, we purposely purge the prisoners regardless of whether we
+	// can connect or update the data in Redis. This way, Guardian continues to "fail open"
 	rs.conf.prisoners.purge()
 	if prisoners, err := prisonersCmd.Result(); err == nil {
 		for ip, prisonerJson := range prisoners {
@@ -888,6 +906,8 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 				expiredPrisoners = append(expiredPrisoners, ip)
 			}
 		}
+	} else {
+		rs.logger.Errorf("error getting prisoners from redis: %v", err)
 	}
 
 	if len(expiredPrisoners) > 0 {

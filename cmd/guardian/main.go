@@ -44,6 +44,8 @@ func main() {
 	profilerServiceName := kingpin.Flag("profiler-service-name", "GCP Stackdriver Profiler service name").Default("guardian").OverrideDefaultFromEnvar("GUARDIAN_FLAG_PROFILER_SERVICE_NAME").String()
 	synchronous := kingpin.Flag("synchronous", "synchronously enforce ratelimit").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SYNCHRONOUS").Bool()
 	initConfig := kingpin.Flag("init", "create missing configuration on startup if needed").Default("false").Envar("GUARDIAN_FLAG_INIT_CONFIG").Bool()
+	prisonerCacheMaxSize := kingpin.Flag("prisoner-cache-max-size", "max size of the cache of prisoner that each Guardian instance maintains").Default("1000").Envar("GUARDIAN_FLAG_PRISONER_CACHE_MAX_SIZE").Uint16()
+
 	kingpin.Parse()
 
 	logger := logrus.StandardLogger()
@@ -96,7 +98,11 @@ func main() {
 	logger.Infof("setting up redis client with address of %v and pool size of %v", redisOpts.Addr, redisOpts.PoolSize)
 	redis := redis.NewClient(redisOpts)
 
-	redisConfStore := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, *initConfig, logger.WithField("context", "redis-conf-provider"), reporter)
+	redisConfStore, err := guardian.NewRedisConfStore(redis, guardian.IPNetsFromStrings(*defaultWhitelist, logger), guardian.IPNetsFromStrings(*defaultBlacklist, logger), defaultLimit, *reportOnly, *initConfig, *prisonerCacheMaxSize, logger.WithField("context", "redis-conf-provider"), reporter)
+	if err != nil {
+		logger.WithError(err).Errorf("could not create new RedisConfStore: %v", err)
+		os.Exit(1)
+	}
 	logger.Infof("starting cache update for conf store")
 
 	wg.Add(1)

@@ -74,7 +74,10 @@ func main() {
 	redisOpts := &redis.Options{Addr: *redisAddress}
 	redis := redis.NewClient(redisOpts)
 	logger := logrus.StandardLogger()
-	redisConfStore := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, logger, nil)
+	redisConfStore, err := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, 1000,  logger, nil)
+	if err != nil {
+		fatalerror(fmt.Errorf("unable to create RedisConfStore: %v", err))
+	}
 
 	level, err := logrus.ParseLevel(*logLevel)
 	if err != nil {
@@ -217,7 +220,10 @@ func main() {
 		}
 		fmt.Printf("removed %d prisoners\n", n)
 	case getPrisonersCmd.FullCommand():
-		prisoners := getPrisoners(redisConfStore)
+		prisoners, err := getPrisoners(redisConfStore)
+		if err != nil {
+			fatalerror(fmt.Errorf("error fetching prisoners: %v"))
+		}
 		prisonersJson, err := yaml.Marshal(prisoners)
 		if err != nil {
 			fatalerror(fmt.Errorf("error marshaling prisoners: %v", err))
@@ -424,7 +430,7 @@ func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error)
 	return store.FetchJails()
 }
 
-func getPrisoners(store *guardian.RedisConfStore) (prisoners []guardian.Prisoner) {
+func getPrisoners(store *guardian.RedisConfStore) ([]guardian.Prisoner, error) {
 	return store.FetchPrisoners()
 }
 

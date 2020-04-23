@@ -22,7 +22,11 @@ func newTestConfStoreWithDefaults(t *testing.T, defaultWhitelist []net.IPNet, de
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, false, TestingLogger, NullReporter{}), s
+	rcf, err := NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, false, 1000, TestingLogger, NullReporter{})
+	if err != nil {
+		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
+	}
+	return rcf, s
 }
 
 func TestConfStoreReturnsDefaults(t *testing.T) {
@@ -622,7 +626,11 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 		}
 		return false
 	}
-	prisoners := c.FetchPrisoners()
+	prisoners, err := c.FetchPrisoners()
+	if err != nil {
+		t.Errorf("unexpected error fetching prisoners: %v", err)
+	}
+
 	if in(expiredPrisoner,prisoners) {
 		t.Errorf("expected expired prisoner to be removed: %v", expiredPrisoner)
 	}
@@ -638,7 +646,10 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 	if n != 1 {
 		t.Errorf("expected %d prisoner(s) removed, received %d", 1, n)
 	}
-	prisoners = c.FetchPrisoners()
+	prisoners, err = c.FetchPrisoners()
+	if err != nil {
+		t.Errorf("unexpected error fetching prisoners: %v", err)
+	}
 
 	if in(currentPrisoner, prisoners) {
 		t.Errorf("expected prisoner %v to be removed", currentPrisoner)

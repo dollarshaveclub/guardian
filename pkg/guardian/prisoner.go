@@ -4,7 +4,6 @@ import (
 	"fmt"
 	lru "github.com/hashicorp/golang-lru"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -18,14 +17,9 @@ type Prisoner struct {
 type prisonersCache struct {
 	// cache is a lru cache safe for concurrent use by multiple go routines.
 	cache *lru.Cache
-
-	// we need a mutex in order to serialize the execution of multiple actions to the cache (e.g. get all prisoners)
-	mutex sync.RWMutex
 }
 
 func (pc *prisonersCache) addPrisoner(remoteAddress string, jail Jail) Prisoner {
-	pc.mutex.Lock()
-	defer pc.mutex.Unlock()
 	ip := net.ParseIP(remoteAddress)
 	p := Prisoner{
 		IP:     ip,
@@ -38,21 +32,15 @@ func (pc *prisonersCache) addPrisoner(remoteAddress string, jail Jail) Prisoner 
 }
 
 func (pc *prisonersCache) addPrisonerFromStore(prisoner Prisoner) {
-	pc.mutex.Lock()
-	defer pc.mutex.Unlock()
 	pc.cache.Add(to4(prisoner.IP), prisoner)
 }
 
 func (pc *prisonersCache) isPrisoner(remoteAddress string) bool {
-	pc.mutex.RLock()
-	defer pc.mutex.RUnlock()
 	_, found := pc.cache.Get(to4(net.ParseIP(remoteAddress)))
 	return found
 }
 
 func (pc *prisonersCache) getPrisoner(remoteAddress string) (Prisoner, bool) {
-	pc.mutex.RLock()
-	defer pc.mutex.RUnlock()
 	p, found := pc.cache.Get(to4(net.ParseIP(remoteAddress)))
 	if !found {
 		return Prisoner{}, false
@@ -65,39 +53,14 @@ func (pc *prisonersCache) getPrisoner(remoteAddress string) (Prisoner, bool) {
 }
 
 func (pc *prisonersCache) removePrisoner(remoteAddress string) bool {
-	pc.mutex.Lock()
-	defer pc.mutex.Unlock()
 	return pc.cache.Remove(to4(net.ParseIP(remoteAddress).To4()))
 }
 
 func (pc *prisonersCache) length() int {
-	pc.mutex.RLock()
-	defer pc.mutex.RUnlock()
 	return pc.cache.Len()
 }
 
-func (pc *prisonersCache) getPrisoners() []Prisoner {
-	pc.mutex.RLock()
-	defer pc.mutex.RUnlock()
-	prisoners := []Prisoner{}
-	keys := pc.cache.Keys()
-	for _, key := range keys {
-		p, ok := pc.cache.Get(key)
-		if !ok {
-			continue
-		}
-		prisoner, ok := p.(Prisoner)
-		if !ok {
-			continue
-		}
-		prisoners = append(prisoners, prisoner)
-	}
-	return prisoners
-}
-
 func (pc *prisonersCache) purge() {
-	pc.mutex.Lock()
-	defer pc.mutex.Unlock()
 	pc.cache.Purge()
 }
 
@@ -112,5 +75,5 @@ func newPrisonerCache(maxSize uint16) (*prisonersCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to create PrisonerCache: %v", err)
 	}
-	return &prisonersCache{cache, sync.RWMutex{}}, nil
+	return &prisonersCache{cache}, nil
 }

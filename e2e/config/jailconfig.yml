@@ -2,14 +2,14 @@ jails:
   - route: "/foo/bar"
     jail:
       limit:
-        duration: 1m
+        duration: 10s
         enabled: true
         count: 10
-      ban_duration: 1h
+      ban_duration: 30s # Keep this duration short as it's used in tests
   - route: "/foo/baz"
     jail:
       limit:
         duration: 1m
         enabled: false
         count: 5
-      ban_duration: 1h
+      ban_duration: 30s # Keep this duration short as it's used in tests

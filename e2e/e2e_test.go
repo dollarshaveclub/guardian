@@ -221,9 +221,10 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 func TestJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
+	whitelistedIP := "192.168.1.1"
 
 	config := guardianConfig{
-		whitelist:                []string{"192.168.1.1/32"},
+		whitelist:                []string{whitelistedIP + "/32"},
 		blacklist:                []string{},
 		limitCount:               5,
 		limitDuration:            time.Minute,
@@ -244,17 +245,19 @@ func TestJails(t *testing.T) {
 		t.Fatalf("error unmarhsaling config file contents: %v", err)
 	}
 
-	banned := false
 	// Assumes that any BanDuration in the Jail Config is greater than the time it takes
 	// to execute this particular test.
 	for _, j := range jailConfig.Jails {
+		banned := false
+		resetRedis(*redisAddr)
+		applyGuardianConfig(t, *redisAddr, config)
 		for i := uint64(0); i < j.Jail.Limit.Count+5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
 				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.43", j.Route)
-			whitelistedRes := GET(t, "192.168.1.1", j.Route)
+			whitelistedRes := GET(t, whitelistedIP, j.Route)
 			res.Body.Close()
 			whitelistedRes.Body.Close()
 
@@ -272,8 +275,16 @@ func TestJails(t *testing.T) {
 				t.Fatalf("whitelisted ip received unexpected status code: wanted %v, got %v, iteration %d, route: %v", 200, whitelistedRes.StatusCode, i, j.Route)
 			}
 		}
+		if j.Jail.Limit.Enabled{
+			t.Logf("sleeping for ban_duration: %v to ensure the prisoner is removed", j.Jail.BanDuration)
+			time.Sleep(j.Jail.BanDuration)
+			time.Sleep(j.Jail.Limit.Duration)
+			res := GET(t, "192.168.1.43", j.Route)
+			if res.StatusCode != 200 {
+				t.Fatalf("prisoner was never removed, received unexpected status code: %d, %v", res.StatusCode, j.Jail)
+			}
+		}
 	}
-
 }
 
 func TestSetJails(t *testing.T) {
