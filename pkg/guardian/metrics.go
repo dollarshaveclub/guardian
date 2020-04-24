@@ -206,7 +206,9 @@ func (d *DataDogReporter) RedisCounterPruned(duration time.Duration, cacheSize f
 
 func (d *DataDogReporter) RedisObtainLock(duration time.Duration, errorOccurred bool) {
 	f := func() {
-		d.client.Timing(redisObtainLockMetricName, duration, d.defaultTags, 1.0)
+		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
+		tags := append([]string{errorTag}, d.defaultTags...)
+		d.client.Timing(redisObtainLockMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
