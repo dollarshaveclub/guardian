@@ -92,20 +92,7 @@ type GenericJailer struct {
 	store          PrisonerStore
 	counter        Counter
 	logger         logrus.FieldLogger
-	onJailsHandled []JailsHandledHook
-}
-
-type JailsHandledHook func(req Request, blocked bool, dur time.Duration, err error)
-
-func OnGenericJailerHandled(mr MetricReporter) JailsHandledHook {
-	return func(req Request, blocked bool, dur time.Duration, err error) {
-		opts := []MetricOptionSetter{}
-		if blocked {
-			// Only set additional tags for requests that were blocked. This way, we know the cardinality of the custom metrics.
-			opts = append(opts, WithRemoteAddress(req.RemoteAddress))
-		}
-		mr.HandledJail(req, blocked, err != nil, dur, opts...)
-	}
+	metricsReporter	MetricReporter
 }
 
 func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned bool, err error) {
@@ -116,9 +103,12 @@ func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned 
 
 	start := time.Now().UTC()
 	defer func() {
-		for _, fn := range gj.onJailsHandled {
-			fn(request, banned, time.Since(start), err)
+		opts := []MetricOptionSetter{}
+		if banned {
+			// Only set additional tags for requests that were blocked. This way, we know the cardinality of the custom metrics.
+			opts = append(opts, WithRemoteAddress(request.RemoteAddress))
 		}
+		gj.metricsReporter.HandledJail(request, banned, err != nil, time.Since(start), opts...)
 	}()
 
 	banned = gj.store.IsPrisoner(request.RemoteAddress)
@@ -159,7 +149,6 @@ func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter
 		store:        s,
 		counter:      c,
 		logger:       logger,
-		// TODO: Expose this field for users to configure as needed
-		onJailsHandled: []JailsHandledHook{OnGenericJailerHandled(mr)},
+		metricsReporter: mr,
 	}
 }
