@@ -21,6 +21,7 @@ const redisCounterPrunedMetricName = "redis_counter.cache.pruned"
 const redisCounterCacheSizeMetricName = "redis_counter.cache.size"
 const redisCounterPrunePassMetricName = "redis_counter.cache.prune_pass"
 const redisObtainLockMetricName = "redis.obtain_lock"
+const redisReleaseLockMetricName = "redis.release_lock"
 const rateLimitCountMetricName = "rate_limit.count"
 const rateLimitDurationMetricName = "rate_limit.duration"
 const rateLimitEnabledMetricName = "rate_limit.enabled"
@@ -54,7 +55,8 @@ type MetricReporter interface {
 	HandledAddPrisoner(ip net.IP, jail Jail)
 	RedisCounterIncr(duration time.Duration, errorOccurred bool)
 	RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64)
-	RedisObtainLock(duration time.Duration, errorOccurred bool)
+	RedisObtainLock(errorOccurred bool)
+	RedisReleaseLock(duration time.Duration, errorOccurred bool)
 	CurrentGlobalLimit(limit Limit)
 	CurrentRouteLimit(route string, limit Limit)
 	CurrentWhitelist(whitelist []net.IPNet)
@@ -203,12 +205,20 @@ func (d *DataDogReporter) RedisCounterPruned(duration time.Duration, cacheSize f
 	d.enqueue(f)
 }
 
-
-func (d *DataDogReporter) RedisObtainLock(duration time.Duration, errorOccurred bool) {
+func (d *DataDogReporter) RedisObtainLock(errorOccurred bool) {
 	f := func() {
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{errorTag}, d.defaultTags...)
-		d.client.Timing(redisObtainLockMetricName, duration, tags, 1.0)
+		d.client.Count(redisObtainLockMetricName, 1, tags, 1.0)
+	}
+	d.enqueue(f)
+}
+
+func (d *DataDogReporter) RedisReleaseLock(duration time.Duration, errorOccurred bool) {
+	f := func() {
+		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
+		tags := append([]string{errorTag}, d.defaultTags...)
+		d.client.TimeInMilliseconds(redisReleaseLockMetricName, float64(duration/time.Millisecond), tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -317,7 +327,10 @@ func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred boo
 func (n NullReporter) RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64) {
 }
 
-func (n NullReporter)  RedisObtainLock(duration time.Duration, errorOccurred bool) {
+func (n NullReporter)  RedisObtainLock(errorOccurred bool) {
+}
+
+func (n NullReporter) 	RedisReleaseLock(duration time.Duration, errorOccurred bool) {
 }
 
 func (n NullReporter) CurrentGlobalLimit(limit Limit) {

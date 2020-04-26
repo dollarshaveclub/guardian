@@ -669,12 +669,8 @@ func (rs *RedisConfStore) obtainRedisPrisonersLock() (*redislock.Lock, error) {
 		RetryStrategy: redislock.LimitRetry(expRetry, 5),
 		Metadata:      "",
 	})
-
-	if err != nil {
-		rs.reporter.RedisObtainLock(time.Minute, true)
-		return nil, fmt.Errorf("unable to obtain lock: %v", err)
-	}
-	return lock, nil
+	rs.reporter.RedisObtainLock(err != nil)
+	return lock, err
 }
 
 func (rs *RedisConfStore) releaseRedisPrisonersLock(lock *redislock.Lock, start time.Time) {
@@ -682,7 +678,7 @@ func (rs *RedisConfStore) releaseRedisPrisonersLock(lock *redislock.Lock, start 
 	if err != nil {
 		rs.logger.Errorf("error releasing lock: %v", err)
 	}
-	rs.reporter.RedisObtainLock(time.Since(start), err != nil)
+	rs.reporter.RedisReleaseLock(time.Since(start), err != nil)
 }
 
 
