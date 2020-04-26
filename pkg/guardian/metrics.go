@@ -218,7 +218,7 @@ func (d *DataDogReporter) RedisReleaseLock(duration time.Duration, errorOccurred
 	f := func() {
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(redisReleaseLockMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(redisReleaseLockMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
