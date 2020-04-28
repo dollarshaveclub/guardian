@@ -74,7 +74,7 @@ func main() {
 	redisOpts := &redis.Options{Addr: *redisAddress}
 	redis := redis.NewClient(redisOpts)
 	logger := logrus.StandardLogger()
-	redisConfStore, err := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, 1000,  logger, nil)
+	redisConfStore, err := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, 1000, logger, nil)
 	if err != nil {
 		fatalerror(fmt.Errorf("unable to create RedisConfStore: %v", err))
 	}

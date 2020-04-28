@@ -81,7 +81,7 @@ type MetricOptionSetter func(mo *MetricOption)
 
 func WithRemoteAddress(remoteAddress string) MetricOptionSetter {
 	return func(mo *MetricOption) {
-		mo.additionalTags = append(mo.additionalTags, remoteAddressKey + ":" + remoteAddress)
+		mo.additionalTags = append(mo.additionalTags, remoteAddressKey+":"+remoteAddress)
 	}
 }
 
@@ -271,7 +271,7 @@ func (d *DataDogReporter) CurrentBlacklist(blacklist []net.IPNet) {
 	d.enqueue(f)
 }
 
-func (d *DataDogReporter) CurrentPrisoners(numPrisoners int ) {
+func (d *DataDogReporter) CurrentPrisoners(numPrisoners int) {
 	f := func() {
 		d.client.Gauge(prisonersCountMetricName, float64(numPrisoners), d.defaultTags, 1)
 	}
@@ -315,7 +315,7 @@ func (n NullReporter) HandledRatelimit(request Request, ratelimited bool, errorO
 func (n NullReporter) HandledRatelimitWithRoute(request Request, ratelimited bool, errorOccurred bool, duration time.Duration) {
 }
 
-func (n NullReporter)  HandledJail(request Request, blocked bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
+func (n NullReporter) HandledJail(request Request, blocked bool, errorOccurred bool, duration time.Duration, setters ...MetricOptionSetter) {
 }
 
 func (n NullReporter) HandledAddPrisoner(ip net.IP, jail Jail) {
@@ -327,10 +327,10 @@ func (n NullReporter) RedisCounterIncr(duration time.Duration, errorOccurred boo
 func (n NullReporter) RedisCounterPruned(duration time.Duration, cacheSize float64, prunedCounted float64) {
 }
 
-func (n NullReporter)  RedisObtainLock(errorOccurred bool) {
+func (n NullReporter) RedisObtainLock(errorOccurred bool) {
 }
 
-func (n NullReporter) 	RedisReleaseLock(duration time.Duration, errorOccurred bool) {
+func (n NullReporter) RedisReleaseLock(duration time.Duration, errorOccurred bool) {
 }
 
 func (n NullReporter) CurrentGlobalLimit(limit Limit) {

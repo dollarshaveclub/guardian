@@ -253,7 +253,7 @@ func TestJails(t *testing.T) {
 		applyGuardianConfig(t, *redisAddr, config)
 		for i := uint64(0); i < j.Jail.Limit.Count+5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.43", j.Route)
@@ -275,7 +275,7 @@ func TestJails(t *testing.T) {
 				t.Fatalf("whitelisted ip received unexpected status code: wanted %v, got %v, iteration %d, route: %v", 200, whitelistedRes.StatusCode, i, j.Route)
 			}
 		}
-		if j.Jail.Limit.Enabled{
+		if j.Jail.Limit.Enabled {
 			t.Logf("sleeping for ban_duration: %v to ensure the prisoner is removed", j.Jail.BanDuration)
 			time.Sleep(j.Jail.BanDuration)
 			time.Sleep(j.Jail.Limit.Duration)

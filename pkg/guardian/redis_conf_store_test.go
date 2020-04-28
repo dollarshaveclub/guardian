@@ -594,9 +594,9 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	expiredPrisoner :="1.1.1.1"
+	expiredPrisoner := "1.1.1.1"
 	expiredJail := Jail{
-		Limit:       Limit{
+		Limit: Limit{
 			Count:    10,
 			Duration: time.Minute,
 			Enabled:  true,
@@ -631,7 +631,7 @@ func TestConfStoreAddRemovePrisoners(t *testing.T) {
 		t.Errorf("unexpected error fetching prisoners: %v", err)
 	}
 
-	if in(expiredPrisoner,prisoners) {
+	if in(expiredPrisoner, prisoners) {
 		t.Errorf("expected expired prisoner to be removed: %v", expiredPrisoner)
 	}
 

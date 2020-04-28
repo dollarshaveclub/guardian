@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bsm/redislock"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
-	"github.com/bsm/redislock"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,7 +42,7 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		defaultBlacklist = []net.IPNet{}
 	}
 
-	if mr == nil{
+	if mr == nil {
 		mr = NullReporter{}
 	}
 
@@ -67,7 +67,7 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 		prisoners: prisoners,
 	}
 
-	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr, locker:locker}
+	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr, locker: locker}
 	if initConfig {
 		if err := rcf.init(); err != nil {
 			return nil, fmt.Errorf("unable to initialize RedisConfStore: %v", err)
@@ -82,7 +82,7 @@ type RedisConfStore struct {
 	conf     *lockingConf
 	logger   logrus.FieldLogger
 	reporter MetricReporter
-	locker 	 *redislock.Client
+	locker   *redislock.Client
 }
 
 type conf struct {
@@ -554,7 +554,6 @@ func (rs *RedisConfStore) init() error {
 		}
 	}
 
-
 	if rs.redis.Get(redisReportOnlyKey).Err() == redis.Nil {
 		rs.logger.Debug("Initializing report only")
 		if err := rs.SetReportOnly(rs.conf.reportOnly); err != nil {
@@ -662,10 +661,10 @@ type fetchConf struct {
 }
 
 func (rs *RedisConfStore) obtainRedisPrisonersLock() (*redislock.Lock, error) {
-	expRetry := redislock.ExponentialBackoff(32 * time.Millisecond, 128 * time.Millisecond)
+	expRetry := redislock.ExponentialBackoff(32*time.Millisecond, 128*time.Millisecond)
 	// Default read/write timeout for the go-redis/redis client is 3 seconds.
 	// The lock TTL should be greater than the read/write timeout.
-	lock, err := rs.locker.Obtain(redisPrisonersLockKey, 6 * time.Second, &redislock.Options{
+	lock, err := rs.locker.Obtain(redisPrisonersLockKey, 6*time.Second, &redislock.Options{
 		RetryStrategy: redislock.LimitRetry(expRetry, 5),
 		Metadata:      "",
 	})
@@ -680,7 +679,6 @@ func (rs *RedisConfStore) releaseRedisPrisonersLock(lock *redislock.Lock, start 
 	}
 	rs.reporter.RedisReleaseLock(time.Since(start), err != nil)
 }
-
 
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	newConf := fetchConf{
@@ -909,7 +907,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	if len(expiredPrisoners) > 0 {
 		removeExpiredPrisonersCmd := rs.redis.HDel(redisPrisonersKey, expiredPrisoners...)
 		if n, err := removeExpiredPrisonersCmd.Result(); err == nil {
-			rs.logger.Debugf("removed %v expired prisoners: %d", n)
+			rs.logger.Debugf("removed %d expired prisoners: %v", n, expiredPrisoners)
 		} else {
 			rs.logger.Errorf("error removing expired prisoners: %v", err)
 		}

@@ -87,12 +87,12 @@ func routeJailKeyFunc(req Request) string {
 }
 
 type GenericJailer struct {
-	keyFunc        func(req Request) string
-	jailProvider   JailProvider
-	store          PrisonerStore
-	counter        Counter
-	logger         logrus.FieldLogger
-	metricsReporter	MetricReporter
+	keyFunc         func(req Request) string
+	jailProvider    JailProvider
+	store           PrisonerStore
+	counter         Counter
+	logger          logrus.FieldLogger
+	metricsReporter MetricReporter
 }
 
 func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned bool, err error) {
@@ -144,11 +144,11 @@ func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned 
 
 func NewGenericJailer(store RouteJailStore, logger logrus.FieldLogger, c Counter, s PrisonerStore, mr MetricReporter) *GenericJailer {
 	return &GenericJailer{
-		keyFunc:      routeJailKeyFunc,
-		jailProvider: NewRouteJailProvider(store, logger),
-		store:        s,
-		counter:      c,
-		logger:       logger,
+		keyFunc:         routeJailKeyFunc,
+		jailProvider:    NewRouteJailProvider(store, logger),
+		store:           s,
+		counter:         c,
+		logger:          logger,
 		metricsReporter: mr,
 	}
 }
