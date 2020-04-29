@@ -251,7 +251,7 @@ func TestJails(t *testing.T) {
 		banned := false
 		resetRedis(*redisAddr)
 		applyGuardianConfig(t, *redisAddr, config)
-		for i := uint64(0); i < j.Jail.Limit.Count+5; i++ {
+		for i := uint64(0); i < j.Jail.Limit.Count+1; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
 				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
@@ -276,9 +276,9 @@ func TestJails(t *testing.T) {
 			}
 		}
 		if j.Jail.Limit.Enabled {
-			t.Logf("sleeping for ban_duration: %v to ensure the prisoner is removed", j.Jail.BanDuration)
+			t.Logf("sleeping for ban_duration: %v + 2 seconds to ensure the prisoner is removed", j.Jail.BanDuration)
 			time.Sleep(j.Jail.BanDuration)
-			time.Sleep(j.Jail.Limit.Duration)
+			time.Sleep(2 * time.Second)  // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
 			res := GET(t, "192.168.1.43", j.Route)
 			if res.StatusCode != 200 {
 				t.Fatalf("prisoner was never removed, received unexpected status code: %d, %v", res.StatusCode, j.Jail)
