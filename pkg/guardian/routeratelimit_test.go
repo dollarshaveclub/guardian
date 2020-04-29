@@ -8,7 +8,7 @@ import (
 )
 
 func TestRouteLimitProvider(t *testing.T) {
-	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled:  true}
+	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	route := url.URL{Path: "/foo/bar"}
 	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
@@ -51,7 +51,7 @@ func TestRouteLimitProvider(t *testing.T) {
 }
 
 func TestRouteLimitProviderUpdates(t *testing.T) {
-	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled:  true}
+	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	route := url.URL{Path: "/foo/bar"}
 	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}

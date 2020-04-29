@@ -18,7 +18,7 @@ type RouteRateLimitStore interface {
 // RouteLimitProvider implements the LimitProvider interface.
 type RouteLimitProvider struct {
 	logger logrus.FieldLogger
-	store RouteRateLimitStore
+	store  RouteRateLimitStore
 }
 
 // GetLimit gets the limit for a particular request's path.

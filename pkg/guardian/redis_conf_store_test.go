@@ -22,7 +22,11 @@ func newTestConfStoreWithDefaults(t *testing.T, defaultWhitelist []net.IPNet, de
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, false, TestingLogger, NullReporter{}), s
+	rcf, err := NewRedisConfStore(redis, defaultWhitelist, defaultBlacklist, defaultLimit, defaultReportOnly, false, 1000, TestingLogger, NullReporter{})
+	if err != nil {
+		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
+	}
+	return rcf, s
 }
 
 func TestConfStoreReturnsDefaults(t *testing.T) {
@@ -87,6 +91,16 @@ func TestConfStoreFetchesSets(t *testing.T) {
 			Enabled:  true,
 		},
 	}
+	expectedJails := map[url.URL]Jail{
+		*fooBarURL: {
+			Limit: Limit{
+				Count:    10,
+				Duration: time.Minute,
+				Enabled:  true,
+			},
+			BanDuration: time.Hour,
+		},
+	}
 
 	if err := c.AddWhitelistCidrs(expectedWhitelist); err != nil {
 		t.Fatalf("got error: %v", err)
@@ -105,6 +119,10 @@ func TestConfStoreFetchesSets(t *testing.T) {
 	}
 
 	if err := c.SetRouteRateLimits(expectedRouteRateLimits); err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	if err := c.SetJails(expectedJails); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
@@ -133,6 +151,11 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
+	gotJails, err := c.FetchJails()
+	if err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)
 	}
@@ -151,6 +174,10 @@ func TestConfStoreFetchesSets(t *testing.T) {
 
 	if !cmp.Equal(gotRouteRateLimits, expectedRouteRateLimits) {
 		t.Errorf("expected: %v received: %v", expectedRouteRateLimits, gotRouteRateLimits)
+	}
+
+	if !cmp.Equal(gotJails, expectedJails) {
+		t.Errorf("expected: %v, received: %v", expectedJails, gotJails)
 	}
 }
 
@@ -450,5 +477,181 @@ func TestConfStoreRemoveNonexistentRoute(t *testing.T) {
 
 	if !cmp.Equal(got, fooBazLimit) {
 		t.Errorf("expected: %v, received: %v", fooBazLimit, got)
+	}
+}
+
+func TestConfStoreAddRemoveJails(t *testing.T) {
+	c, s := newTestConfStore(t)
+	defer s.Close()
+
+	fooBarURL, _ := url.Parse("/foo/bar")
+	fooBarJail := Jail{
+		Limit: Limit{
+			Count:    5,
+			Duration: time.Second,
+			Enabled:  true,
+		},
+		BanDuration: time.Hour,
+	}
+
+	fooBazURL, _ := url.Parse("/foo/baz")
+	fooBazJail := Jail{
+		Limit: Limit{
+			Count:    3,
+			Duration: time.Second,
+			Enabled:  false,
+		},
+		BanDuration: time.Hour,
+	}
+
+	jails := map[url.URL]Jail{
+		*fooBarURL: fooBarJail,
+		*fooBazURL: fooBazJail,
+	}
+
+	if err := c.SetJails(jails); err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	got, err := c.FetchJail(*fooBarURL)
+	if err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	if !cmp.Equal(got, fooBarJail) {
+		t.Errorf("expected: %v, received: %v", fooBarJail, got)
+	}
+
+	var urls []url.URL
+	urls = append(urls, *fooBarURL)
+	if err := c.RemoveJails(urls); err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	// Expect an error since we removed the limits for this route
+	got, err = c.FetchJail(*fooBarURL)
+	if err == nil {
+		t.Fatalf("expected error fetching route limit which didn't exist")
+	}
+
+	got, err = c.FetchJail(*fooBazURL)
+	if err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	if !cmp.Equal(got, fooBazJail) {
+		t.Errorf("expected: %v, received: %v", fooBarJail, got)
+	}
+}
+
+func TestConfStoreSetExistingJail(t *testing.T) {
+	c, s := newTestConfStore(t)
+	defer s.Close()
+
+	fooBarURL, _ := url.Parse("/foo/bar")
+	fooBarJail := Jail{
+		Limit: Limit{
+			Count:    5,
+			Duration: time.Second,
+			Enabled:  true,
+		},
+		BanDuration: time.Hour,
+	}
+
+	jails := map[url.URL]Jail{*fooBarURL: fooBarJail}
+
+	if err := c.SetJails(jails); err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	newJail := Jail{
+		Limit: Limit{
+			Count:    100,
+			Duration: time.Minute,
+			Enabled:  false,
+		},
+		BanDuration: time.Minute,
+	}
+
+	newJails := map[url.URL]Jail{
+		*fooBarURL: newJail,
+	}
+	if err := c.SetJails(newJails); err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	got, err := c.FetchJail(*fooBarURL)
+	if err != nil {
+		t.Fatalf("got error: %v", err)
+	}
+
+	if !cmp.Equal(got, newJail) {
+		t.Errorf("expected: %v, received: %v", newJail, got)
+	}
+}
+
+func TestConfStoreAddRemovePrisoners(t *testing.T) {
+	c, s := newTestConfStore(t)
+	defer s.Close()
+
+	expiredPrisoner := "1.1.1.1"
+	expiredJail := Jail{
+		Limit: Limit{
+			Count:    10,
+			Duration: time.Minute,
+			Enabled:  true,
+		},
+		BanDuration: 0 * time.Millisecond,
+	}
+	currentPrisoner := "2.2.2.2"
+	currentJail := Jail{
+		Limit: Limit{
+			Count:    10,
+			Duration: time.Minute,
+			Enabled:  true,
+		},
+		BanDuration: 24 * time.Hour,
+	}
+
+	c.AddPrisoner(expiredPrisoner, expiredJail)
+	c.AddPrisoner(currentPrisoner, currentJail)
+
+	time.Sleep(100 * time.Millisecond)
+
+	in := func(ip string, prisoners []Prisoner) bool {
+		for _, p := range prisoners {
+			if p.IP.String() == ip {
+				return true
+			}
+		}
+		return false
+	}
+	prisoners, err := c.FetchPrisoners()
+	if err != nil {
+		t.Errorf("unexpected error fetching prisoners: %v", err)
+	}
+
+	if in(expiredPrisoner, prisoners) {
+		t.Errorf("expected expired prisoner to be removed: %v", expiredPrisoner)
+	}
+
+	if !in(currentPrisoner, prisoners) {
+		t.Errorf("expected prisoner: %v", currentPrisoner)
+	}
+
+	n, err := c.RemovePrisoners([]net.IP{net.ParseIP(currentPrisoner)})
+	if err != nil {
+		t.Errorf("received unexpected error when removing prisoner: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected %d prisoner(s) removed, received %d", 1, n)
+	}
+	prisoners, err = c.FetchPrisoners()
+	if err != nil {
+		t.Errorf("unexpected error fetching prisoners: %v", err)
+	}
+
+	if in(currentPrisoner, prisoners) {
+		t.Errorf("expected prisoner %v to be removed", currentPrisoner)
 	}
 }

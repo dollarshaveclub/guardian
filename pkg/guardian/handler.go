@@ -19,10 +19,11 @@ type CondRequestBlockerFunc func(context.Context, Request) (stop, blocked bool, 
 
 // DefaultCondChain is the default condition chain used by Guardian. This performs the following checks when
 // processing a request: whitelist, blacklist, rate limiters.
-func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, rateLimiters ...RateLimiter) RequestBlockerFunc {
+func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, jailer Jailer, rateLimiters ...RateLimiter) RequestBlockerFunc {
 	condWhitelistFunc := CondStopOnWhitelistFunc(whitelister)
 	condBlacklistFunc := CondStopOnBlacklistFunc(blacklister)
-	rbfs := []CondRequestBlockerFunc{condWhitelistFunc, condBlacklistFunc}
+	condJailerFunc := CondStopOnBanned(jailer)
+	rbfs := []CondRequestBlockerFunc{condWhitelistFunc, condBlacklistFunc, condJailerFunc}
 	for _, rl := range rateLimiters {
 		rbfs = append(rbfs, CondStopOnBlockOrError(rl))
 	}
@@ -42,7 +43,6 @@ func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 			if remaining < minRemaining {
 				minRemaining = remaining
 			}
-
 			if stop || blocked {
 				return blocked, minRemaining, nil
 			}

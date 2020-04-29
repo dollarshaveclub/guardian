@@ -49,10 +49,20 @@ func main() {
 
 	// Route rate limitting
 	setRouteRateLimitsCmd := app.Command("set-route-rate-limits", "Sets rate limits for provided routes")
-	configFilePath := setRouteRateLimitsCmd.Arg("config-file", "path to configuration file").Required().String()
+	configFilePath := setRouteRateLimitsCmd.Arg("route-rate-limit-config-file", "path to configuration file").Required().String()
 	removeRouteRateLimitsCmd := app.Command("remove-route-rate-limits", "Removes rate limits for provided routes")
 	removeRouteRateLimitStrings := removeRouteRateLimitsCmd.Arg("routes", "Comma seperated list of routes to remove").Required().String()
 	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route")
+
+	// Jails
+	setJailsCmd := app.Command("set-jails", "Sets rate limits for provided routes")
+	jailsConfigFilePath := setJailsCmd.Arg("jail-config-file", "Path to configuration file").Required().String()
+	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes")
+	removeJailsArgs := removeJailsCmd.Arg("jail-routes", "Comma separated list of jails to remove. Use the name of the route").Required().String()
+	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
+	getPrisonersCmd := app.Command("get-prisoners", "List all prisoners")
+	removePrisonersCmd := app.Command("remove-prisoners", "Removes prisoners from")
+	prisoners := removePrisonersCmd.Arg("prisoners", "Comma separated list of ip address to remove").Required().String()
 
 	// Report Only
 	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
@@ -64,7 +74,10 @@ func main() {
 	redisOpts := &redis.Options{Addr: *redisAddress}
 	redis := redis.NewClient(redisOpts)
 	logger := logrus.StandardLogger()
-	redisConfStore := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, logger, nil)
+	redisConfStore, err := guardian.NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, guardian.Limit{}, false, false, 1000, logger, nil)
+	if err != nil {
+		fatalerror(fmt.Errorf("unable to create RedisConfStore: %v", err))
+	}
 
 	level, err := logrus.ParseLevel(*logLevel)
 	if err != nil {
@@ -175,8 +188,48 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println(reportOnly)
+	case setJailsCmd.FullCommand():
+		err := setJails(redisConfStore, *jailsConfigFilePath)
+		if err != nil {
+			fatalerror(fmt.Errorf("error setting jails: %v", err))
+		}
+	case removeJailsCmd.FullCommand():
+		err := removeJails(redisConfStore, *removeJailsArgs)
+		if err != nil {
+			fatalerror(err)
+		}
+	case getJailsCmd.FullCommand():
+		jails, err := getJails(redisConfStore)
+		config := guardian.JailConfig{}
+		for u, j := range jails {
+			entry := guardian.JailConfigEntry{
+				Route: u.EscapedPath(),
+				Jail:  j,
+			}
+			config.Jails = append(config.Jails, entry)
+		}
+		configYaml, err := yaml.Marshal(config)
+		if err != nil {
+			fatalerror(fmt.Errorf("error marshaling jails yaml: %v", err))
+		}
+		fmt.Println(string(configYaml))
+	case removePrisonersCmd.FullCommand():
+		n, err := removePrisoners(redisConfStore, *prisoners)
+		if err != nil {
+			fatalerror(fmt.Errorf("error removing prisoners: %v", err))
+		}
+		fmt.Printf("removed %d prisoners\n", n)
+	case getPrisonersCmd.FullCommand():
+		prisoners, err := getPrisoners(redisConfStore)
+		if err != nil {
+			fatalerror(fmt.Errorf("error fetching prisoners: %v"))
+		}
+		prisonersJson, err := yaml.Marshal(prisoners)
+		if err != nil {
+			fatalerror(fmt.Errorf("error marshaling prisoners: %v", err))
+		}
+		fmt.Println(string(prisonersJson))
 	}
-
 }
 
 func addWhitelist(store *guardian.RedisConfStore, cidrStrings []string, logger logrus.FieldLogger) error {
@@ -338,6 +391,55 @@ func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) e
 		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
 	}
 	return store.SetRouteRateLimits(routeRateLimits)
+}
+
+func setJails(store *guardian.RedisConfStore, configFilePath string) error {
+	jails := make(map[url.URL]guardian.Jail)
+	content, err := ioutil.ReadFile(configFilePath)
+	if err != nil {
+		return fmt.Errorf("error reading config file: %v", err)
+	}
+	config := guardian.JailConfig{}
+	err = yaml.Unmarshal(content, &config)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling yaml: %v", err)
+	}
+	for _, jailEntry := range config.Jails {
+		configuredURL, err := url.Parse(jailEntry.Route)
+		if err != nil {
+			return fmt.Errorf("error parsing route: %v", err)
+		}
+		jails[*configuredURL] = jailEntry.Jail
+	}
+	return store.SetJails(jails)
+}
+
+func removeJails(store *guardian.RedisConfStore, routes string) error {
+	var urls []url.URL
+	for _, route := range strings.Split(routes, ",") {
+		unwantedURL, err := url.Parse(route)
+		if err != nil {
+			return fmt.Errorf("error parsing route: %v", err)
+		}
+		urls = append(urls, *unwantedURL)
+	}
+	return store.RemoveJails(urls)
+}
+
+func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
+	return store.FetchJails()
+}
+
+func getPrisoners(store *guardian.RedisConfStore) ([]guardian.Prisoner, error) {
+	return store.FetchPrisoners()
+}
+
+func removePrisoners(store *guardian.RedisConfStore, prisoners string) (int64, error) {
+	input := []net.IP{}
+	for _, p := range strings.Split(prisoners, ",") {
+		input = append(input, net.ParseIP(p))
+	}
+	return store.RemovePrisoners(input)
 }
 
 func fatalerror(err error) {

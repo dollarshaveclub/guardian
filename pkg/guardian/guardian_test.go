@@ -26,20 +26,24 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	if res := redis.Ping(); res.Err() != nil {
 		t.Fatalf("error pinging redis: %v", res.Err())
 	}
-	redisConfStore := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, false, logger.WithField("context", "redis-conf-provider"), nil)
+	redisConfStore, err := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, false, 1000, logger.WithField("context", "redis-conf-provider"), nil)
+	if err != nil {
+		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
+	}
 	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
 	blacklister := NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), NullReporter{})
 	rateLimiter := &GenericRateLimiter{
-		KeyFunc:  IPRateLimiterKeyFunc,
-		LimitProvider:     NewGlobalLimitProvider(redisConfStore),
-		Counter:  redisCounter,
-		Logger:   logger.WithField("context", "ip-rate-limiter"),
+		KeyFunc:       IPRateLimiterKeyFunc,
+		LimitProvider: NewGlobalLimitProvider(redisConfStore),
+		Counter:       redisCounter,
+		Logger:        logger.WithField("context", "ip-rate-limiter"),
 	}
+	jailer := NewGenericJailer(redisConfStore, logger, redisCounter, redisConfStore, NullReporter{})
 
-	condFuncChain := DefaultCondChain(whitelister, blacklister, rateLimiter)
+	condFuncChain := DefaultCondChain(whitelister, blacklister, jailer, rateLimiter)
 	server := NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), NullReporter{})
 
 	return server, mr, redisConfStore, stop

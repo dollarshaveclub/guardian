@@ -60,6 +60,14 @@
   version = "2.4"
 
 [[projects]]
+  digest = "1:6259108f909606ed47d4eacbe1b4e3f1f26121b7868daff6ac005e912eafdd67"
+  name = "github.com/bsm/redislock"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3d76f17a9f1e22d11521f78267ce1795641ae596"
+  version = "v0.4.3"
+
+[[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
@@ -157,6 +165,17 @@
   pruneopts = "UT"
   revision = "317e0006254c44a0ac427cc52a0e083ff0b9622f"
   version = "v2.0.0"
+
+[[projects]]
+  digest = "1:e631368e174090a276fc00b48283f92ac4ccfbbb1945bcfcee083f5f9210dc00"
+  name = "github.com/hashicorp/golang-lru"
+  packages = [
+    ".",
+    "simplelru",
+  ]
+  pruneopts = "UT"
+  revision = "14eae340515388ca95aa8e7b86f0de668e981f54"
+  version = "v0.5.4"
 
 [[projects]]
   digest = "1:dfe5159383dfcd370555c35374ac99022906f987b55cc65a830fb9ced970b4b1"
@@ -389,11 +408,13 @@
     "cloud.google.com/go/profiler",
     "github.com/DataDog/datadog-go/statsd",
     "github.com/alicebob/miniredis",
+    "github.com/bsm/redislock",
     "github.com/davecgh/go-spew/spew",
     "github.com/envoyproxy/go-control-plane/envoy/api/v2/ratelimit",
     "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v2",
     "github.com/go-redis/redis",
     "github.com/google/go-cmp/cmp",
+    "github.com/hashicorp/golang-lru",
     "github.com/pkg/errors",
     "github.com/sirupsen/logrus",
     "google.golang.org/grpc",

@@ -44,10 +44,10 @@ type RateLimitHook func(req Request, limit Limit, rateLimited bool, dur time.Dur
 // 1. A KeyFunc that determines the key that wil be used for incrementing.
 // 2. A LimitProvider that determines how the limit will be calculated.
 type GenericRateLimiter struct {
-	KeyFunc          func(req Request) string
-	LimitProvider    LimitProvider
-	Counter          Counter
-	Logger           logrus.FieldLogger
+	KeyFunc            func(req Request) string
+	LimitProvider      LimitProvider
+	Counter            Counter
+	Logger             logrus.FieldLogger
 	OnRateLimitHandled []RateLimitHook
 }
 
@@ -80,7 +80,7 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 
 	currCount, blocked, err := rl.Counter.Incr(context, key, 1, limit.Count, limit.Duration)
 	if err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("error incrementing limit for request %v", request))
+		err = errors.Wrap(err, fmt.Sprintf("error incrementing counter for request %v", request))
 		rl.Logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}
