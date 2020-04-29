@@ -113,7 +113,7 @@ func (d *DataDogReporter) Duration(request Request, blocked bool, errorOccurred 
 		blockedTag := blockedKey + ":" + strconv.FormatBool(blocked)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{blockedTag, errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(durationMetricName, float64(duration/time.Millisecond), tags, 1)
+		d.client.Timing(durationMetricName, duration, tags, 1)
 	}
 
 	d.enqueue(f)
@@ -124,7 +124,7 @@ func (d *DataDogReporter) HandledWhitelist(request Request, whitelisted bool, er
 		whitelistedTag := whitelistedKey + ":" + strconv.FormatBool(whitelisted)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{whitelistedTag, errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(reqWhitelistMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(reqWhitelistMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -134,7 +134,7 @@ func (d *DataDogReporter) HandledBlacklist(request Request, blacklisted bool, er
 		blacklistedTag := blacklistedKey + ":" + strconv.FormatBool(blacklisted)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{blacklistedTag, errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(reqBlacklistMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(reqBlacklistMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -144,7 +144,7 @@ func (d *DataDogReporter) HandledRatelimit(request Request, ratelimited bool, er
 		ratelimitedTag := ratelimitedKey + ":" + strconv.FormatBool(ratelimited)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{ratelimitedTag, errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(reqRateLimitMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -155,7 +155,7 @@ func (d *DataDogReporter) HandledRatelimitWithRoute(request Request, ratelimited
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		routeTag := routeKey + ":" + request.Path
 		tags := append([]string{ratelimitedTag, errorTag, routeTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(reqRateLimitMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(reqRateLimitMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -171,7 +171,7 @@ func (d *DataDogReporter) HandledJail(request Request, blocked bool, errorOccurr
 		blockedTag := blockedKey + ":" + strconv.FormatBool(blocked)
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append(tags, []string{blockedTag, errorTag}...)
-		d.client.TimeInMilliseconds(reqJailMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(reqJailMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -191,7 +191,7 @@ func (d *DataDogReporter) RedisCounterIncr(duration time.Duration, errorOccurred
 	f := func() {
 		errorTag := errorKey + ":" + strconv.FormatBool(errorOccurred)
 		tags := append([]string{errorTag}, d.defaultTags...)
-		d.client.TimeInMilliseconds(redisCounterIncrMetricName, float64(duration/time.Millisecond), tags, 1.0)
+		d.client.Timing(redisCounterIncrMetricName, duration, tags, 1.0)
 	}
 	d.enqueue(f)
 }
@@ -200,7 +200,7 @@ func (d *DataDogReporter) RedisCounterPruned(duration time.Duration, cacheSize f
 	f := func() {
 		d.client.Gauge(redisCounterCacheSizeMetricName, cacheSize, d.defaultTags, 1)
 		d.client.Gauge(redisCounterPrunedMetricName, prunedCounted, d.defaultTags, 1)
-		d.client.TimeInMilliseconds(redisCounterPrunePassMetricName, float64(duration/time.Millisecond), d.defaultTags, 1)
+		d.client.Timing(redisCounterPrunePassMetricName, duration, d.defaultTags, 1)
 	}
 	d.enqueue(f)
 }
