@@ -893,10 +893,10 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 				continue
 			}
 			if time.Now().UTC().Before(prisoner.Expiry) {
-				rs.logger.Printf("adding %v to prisoners\n", prisoner.IP.String())
+				rs.logger.Debugf("adding %v to prisoners\n", prisoner.IP.String())
 				rs.conf.prisoners.addPrisonerFromStore(prisoner)
 			} else {
-				rs.logger.Printf("removing %v from prisoners\n", prisoner.IP.String())
+				rs.logger.Debugf("removing %v from prisoners\n", prisoner.IP.String())
 				expiredPrisoners = append(expiredPrisoners, ip)
 			}
 		}
