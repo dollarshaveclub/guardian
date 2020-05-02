@@ -12,7 +12,7 @@ services:
     environment:
       GUARDIAN_FLAG_REDIS_ADDRESS: "redis:6379"
       GUARDIAN_FLAG_LOG_LEVEL: "debug"
-      GUARDIAN_FLAG_CONF_UPDATE_INTERVAL: "1s"
+      GUARDIAN_FLAG_CONF_UPDATE_INTERVAL: "500ms"
       GUARDIAN_FLAG_SYNCHRONOUS: "false"
     depends_on:
     - redis
