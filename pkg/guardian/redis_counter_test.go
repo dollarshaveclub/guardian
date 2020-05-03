@@ -16,7 +16,11 @@ func newTestFixedWindowCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Mi
 		t.Fatalf("error creating miniredis")
 	}
 
-	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
+	redis := redis.NewClient(&redis.Options{
+		Addr: s.Addr(),
+		MaxRetries: 3,
+		IdleTimeout: 1 * time.Second,
+	})
 	return NewFixedWindowCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 
@@ -25,13 +29,13 @@ func TestFixedWindowCounterIncr(t *testing.T) {
 	defer s.Close()
 
 	key := "test_key"
-	namespacedKey := NamespacedKey(limitStoreNamespace, "test_key")
 	incrBy := uint(10)
 	limit := Limit{
 		Count:    15,
-		Duration: 1 * time.Second,
+		Duration: 1 * time.Minute,
 		Enabled:  true,
 	}
+	namespacedKey := NamespacedKey(limitStoreNamespace, slotKey(key, time.Now().UTC(), limit.Duration))
 
 	existingCount := 5
 	_, err := s.Incr(namespacedKey, existingCount)
@@ -56,7 +60,7 @@ func TestFixedWindowCounterIncr(t *testing.T) {
 		t.Fatalf("expected: %v received: %v", expectedCount, gotCount)
 	}
 
-	s.FastForward(1 * time.Second)
+	s.FastForward(1 * time.Minute)
 
 	_, err = s.Get(namespacedKey)
 	expected := miniredis.ErrKeyNotFound
@@ -73,7 +77,7 @@ func TestFixedWindowPrune(t *testing.T) {
 	incrBy := uint(10)
 	limit := Limit{
 		Count:    15,
-		Duration: 1 * time.Second,
+		Duration: 1 * time.Minute,
 		Enabled:  true,
 	}
 
@@ -81,13 +85,13 @@ func TestFixedWindowPrune(t *testing.T) {
 	c.Incr(context.Background(), incrBy, key, limit)
 
 	time.Sleep(time.Second)
-
-	_, ok := c.cache.m[key]
+	namespacedKey := NamespacedKey(limitStoreNamespace, slotKey(key, time.Now().UTC(), limit.Duration))
+	_, ok := c.cache.m[namespacedKey]
 	if !ok {
 		t.Fatalf("key should exist in cache but does not")
 	}
 
-	c.pruneCache(time.Now().UTC().Add(2 * time.Second))
+	c.pruneCache(time.Now().UTC().Add(2 * time.Minute))
 
 	_, ok = c.cache.m[key]
 	if ok {

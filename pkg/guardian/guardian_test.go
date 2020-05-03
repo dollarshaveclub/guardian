@@ -22,7 +22,11 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	}
 
 	stop := make(chan struct{})
-	redis := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: 2})
+	redis := redis.NewClient(&redis.Options{
+		Addr: mr.Addr(),
+		MaxRetries: 3,
+		IdleTimeout: 1 * time.Second,
+	})
 	if res := redis.Ping(); res.Err() != nil {
 		t.Fatalf("error pinging redis: %v", res.Err())
 	}
