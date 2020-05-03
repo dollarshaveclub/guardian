@@ -111,7 +111,7 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	redisCounter := guardian.NewRedisCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
+	redisCounter := guardian.NewFixedWindowCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

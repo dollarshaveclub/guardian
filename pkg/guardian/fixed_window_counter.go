@@ -13,13 +13,12 @@ import (
 
 const limitStoreNamespace = "limit_store"
 
-func NewRedisCounter(redis *redis.Client, synchronous bool, logger logrus.FieldLogger, reporter MetricReporter) *RedisCounter {
-	return &RedisCounter{redis: redis, synchronous: synchronous, logger: logger, cache: &lockingExpiringMap{m: make(map[string]item)}, reporter: reporter}
+func NewFixedWindowCounter(redis *redis.Client, synchronous bool, logger logrus.FieldLogger, reporter MetricReporter) *FixedWindowCounter {
+	return &FixedWindowCounter{redis: redis, synchronous: synchronous, logger: logger, cache: &lockingExpiringMap{m: make(map[string]item)}, reporter: reporter}
 }
 
 type item struct {
 	val      uint64
-	blocked  bool
 	expireAt time.Time
 }
 
@@ -28,10 +27,8 @@ type lockingExpiringMap struct {
 	m map[string]item
 }
 
-// RedisLimitCounter is a Counter that uses Redis for persistence
-// TODO: fetch the current limit configuration from redis instead of using
-// a static one
-type RedisCounter struct {
+// FixedWindowCounter is a Counter that uses Redis for persistence and atomic increments
+type FixedWindowCounter struct {
 	redis       *redis.Client
 	synchronous bool
 	logger      logrus.FieldLogger
@@ -39,7 +36,7 @@ type RedisCounter struct {
 	cache       *lockingExpiringMap
 }
 
-func (rs *RedisCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
+func (rs *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(pruneInterval)
 	for {
 		select {
@@ -52,15 +49,15 @@ func (rs *RedisCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 	}
 }
 
-func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error) {
+func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
 	runIncrFunc := func() (item, error) {
-		count, err := rs.doIncr(context, key, incrBy, expireIn)
+		count, err := rs.doIncr(context, key, incrBy, limit.Duration)
 		if err != nil {
 			rs.logger.WithError(err).Error("error incrementing")
 			return item{}, err
 		}
 
-		item := item{val: count, blocked: count > maxBeforeBlock, expireAt: time.Now().UTC().Add(expireIn)}
+		item := item{val: count, expireAt: time.Now().UTC().Add(limit.Duration)}
 		rs.cache.Lock()
 		rs.cache.m[key] = item
 		rs.cache.Unlock()
@@ -72,22 +69,25 @@ func (rs *RedisCounter) Incr(context context.Context, key string, incrBy uint, m
 	existing := rs.cache.m[key]
 	rs.cache.RUnlock()
 
-	if existing.blocked {
-		return existing.val + uint64(incrBy), existing.blocked, nil
+
+	// Note: This seems to be required for tests to pass.
+	// Otherwise, doesn't seem like miniredis is able to handle the load from these tests.
+	if existing.val > limit.Count {
+		return existing.val + uint64(incrBy), nil
 	}
 
 	if !rs.synchronous {
 		go runIncrFunc()
 
 		count := existing.val + uint64(incrBy)
-		return count, count > maxBeforeBlock, nil
+		return count, nil
 	}
 
 	curr, err := runIncrFunc()
-	return curr.val, curr.blocked, err
+	return curr.val, err
 }
 
-func (rs *RedisCounter) pruneCache(olderThan time.Time) {
+func (rs *FixedWindowCounter) pruneCache(olderThan time.Time) {
 	start := time.Now().UTC()
 	cacheSize := 0
 	pruned := 0
@@ -107,7 +107,7 @@ func (rs *RedisCounter) pruneCache(olderThan time.Time) {
 	}
 }
 
-func (rs *RedisCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
+func (rs *FixedWindowCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
 	start := time.Now().UTC()
 	var err error
 	defer func() {

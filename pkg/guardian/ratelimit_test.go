@@ -34,14 +34,17 @@ type FakeLimitStore struct {
 	forceBlock  bool
 }
 
-func (fl *FakeLimitStore) Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error) {
+func (fl *FakeLimitStore) Incr(context context.Context, key string, incryBy uint, limit Limit) (uint64, error) {
 	if fl.injectedErr != nil {
-		return 0, false, fl.injectedErr
+		return 0, fl.injectedErr
+	}
+
+	if fl.forceBlock {
+		return limit.Count + 1, nil
 	}
 
 	fl.count[key] += uint64(incryBy)
-
-	return fl.count[key], fl.forceBlock, nil
+	return fl.count[key], nil
 }
 
 func TestLimitString(t *testing.T) {

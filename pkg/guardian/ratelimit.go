@@ -33,9 +33,8 @@ type LimitProvider interface {
 // Counter is a data store capable of incrementing and expiring the count of a key
 type Counter interface {
 
-	// Incr increments key by count and sets the expiration to expireIn from now. The result of the incr, whether to force block,
-	// and an error is returned
-	Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error)
+	// Incr increments key by count and sets the expiration proportional to the limit.Duration
+	Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error)
 }
 
 type RateLimitHook func(req Request, limit Limit, rateLimited bool, dur time.Duration, err error)
@@ -78,14 +77,14 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 	key := SlotKey(rl.KeyFunc(request), time.Now().UTC(), limit.Duration)
 	rl.Logger.Debugf("generated key %v for request %v", key, request)
 
-	currCount, blocked, err := rl.Counter.Incr(context, key, 1, limit.Count, limit.Duration)
+	currCount, err := rl.Counter.Incr(context, key, 1, limit)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing counter for request %v", request))
 		rl.Logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}
 
-	ratelimited = blocked || currCount > limit.Count
+	ratelimited = currCount > limit.Count
 	if ratelimited {
 		rl.Logger.Debugf("request %v blocked", request)
 		return ratelimited, 0, err // block request, rate limited

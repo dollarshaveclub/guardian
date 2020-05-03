@@ -10,41 +10,38 @@ import (
 	"github.com/go-redis/redis"
 )
 
-func newTestRedisCounter(t *testing.T) (*RedisCounter, *miniredis.Miniredis) {
+func newTestRedisCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredis) {
 	s, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("error creating miniredis")
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisCounter(redis, false, TestingLogger, NullReporter{}), s
+	return NewFixedWindowCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 
-func TestRedisCounterIncr(t *testing.T) {
+func TestFixedWindowIncr(t *testing.T) {
 	c, s := newTestRedisCounter(t)
 	defer s.Close()
 
 	key := "test_key"
 	namespacedKey := NamespacedKey(limitStoreNamespace, "test_key")
 	incrBy := uint(10)
-	expire := 1 * time.Second
-	maxBlock := uint64(15)
-
+	limit := Limit{15, time.Second, true}
 	existingCount := 5
 	_, err := s.Incr(namespacedKey, existingCount)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), key, incrBy, limit)
+	c.Incr(context.Background(), key, incrBy, limit)
 
 	time.Sleep(1 * time.Second) // wait for async increment
 
-	_, blocked, err := c.Incr(context.Background(), key, 1, maxBlock, expire)
-	expectedBlock := true
-	if blocked != expectedBlock {
-		t.Fatalf("expected: %v received: %v", expectedBlock, blocked)
+	curCount, err := c.Incr(context.Background(), key, 1, limit)
+	if curCount < limit.Count {
+		t.Fatalf("expected current count to be greater than limit: %d received: %d", limit.Count, curCount)
 	}
 
 	expectedCount := uint(existingCount) + incrBy + incrBy
@@ -69,11 +66,10 @@ func TestPrune(t *testing.T) {
 
 	key := "test_key"
 	incrBy := uint(5)
-	expire := 1 * time.Second
-	maxBlock := uint64(15)
+	limit := Limit{15, time.Second, true}
 
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), key, incrBy, limit)
+	c.Incr(context.Background(), key, incrBy, limit)
 
 	time.Sleep(time.Second)
 
