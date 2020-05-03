@@ -22,7 +22,7 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	}
 
 	stop := make(chan struct{})
-	redis := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	redis := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: 2})
 	if res := redis.Ping(); res.Err() != nil {
 		t.Fatalf("error pinging redis: %v", res.Err())
 	}
@@ -30,7 +30,7 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	if err != nil {
 		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
 	}
-	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
+	fixedWindowCounter := NewFixedWindowCounter(redis, false, logger.WithField("context", "fixed-window-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
@@ -38,10 +38,10 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	rateLimiter := &GenericRateLimiter{
 		KeyFunc:       IPRateLimiterKeyFunc,
 		LimitProvider: NewGlobalLimitProvider(redisConfStore),
-		Counter:       redisCounter,
+		Counter:       fixedWindowCounter,
 		Logger:        logger.WithField("context", "ip-rate-limiter"),
 	}
-	jailer := NewGenericJailer(redisConfStore, logger, redisCounter, redisConfStore, NullReporter{})
+	jailer := NewGenericJailer(redisConfStore, logger, fixedWindowCounter, redisConfStore, NullReporter{})
 
 	condFuncChain := DefaultCondChain(whitelister, blacklister, jailer, rateLimiter)
 	server := NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), NullReporter{})

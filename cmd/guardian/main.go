@@ -111,18 +111,18 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	redisCounter := guardian.NewRedisCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
+	fixedWindowCounter := guardian.NewFixedWindowCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		redisCounter.Run(30*time.Second, stop)
+		fixedWindowCounter.Run(30*time.Second, stop)
 	}()
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
-	jailer := guardian.NewGenericJailer(redisConfStore, logger.WithField("context", "route-jailer"), redisCounter, redisConfStore, reporter)
-	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, redisCounter)
-	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, redisCounter)
+	jailer := guardian.NewGenericJailer(redisConfStore, logger.WithField("context", "route-jailer"), fixedWindowCounter, redisConfStore, reporter)
+	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, fixedWindowCounter)
+	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, fixedWindowCounter)
 	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, jailer, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)

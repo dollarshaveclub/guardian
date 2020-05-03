@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -32,10 +31,7 @@ type LimitProvider interface {
 
 // Counter is a data store capable of incrementing and expiring the count of a key
 type Counter interface {
-
-	// Incr increments key by count and sets the expiration to expireIn from now. The result of the incr, whether to force block,
-	// and an error is returned
-	Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error)
+	Incr(context context.Context, incrBy uint, keyBase string, limit Limit) (uint64, error)
 }
 
 type RateLimitHook func(req Request, limit Limit, rateLimited bool, dur time.Duration, err error)
@@ -75,17 +71,14 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 		return false, math.MaxUint32, nil
 	}
 
-	key := SlotKey(rl.KeyFunc(request), time.Now().UTC(), limit.Duration)
-	rl.Logger.Debugf("generated key %v for request %v", key, request)
-
-	currCount, blocked, err := rl.Counter.Incr(context, key, 1, limit.Count, limit.Duration)
+	currCount, err := rl.Counter.Incr(context, 1, rl.KeyFunc(request), limit)
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing counter for request %v", request))
 		rl.Logger.WithError(err).Error("counter returned error when call incr")
 		return false, 0, err
 	}
 
-	ratelimited = blocked || currCount > limit.Count
+	ratelimited = currCount > limit.Count
 	if ratelimited {
 		rl.Logger.Debugf("request %v blocked", request)
 		return ratelimited, 0, err // block request, rate limited
@@ -100,20 +93,4 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 
 	rl.Logger.Debugf("request %v allowed with %v remaining requests", request, remaining32)
 	return ratelimited, remaining32, err
-}
-
-// SlotKey generates the key for a slot determined by the request, slot time, and limit duration
-func SlotKey(keybase string, slotTime time.Time, duration time.Duration) string {
-	// a) convert to seconds
-	// b) get slot time unix epoch seconds
-	// c) use integer division to bucket based on limit.Duration
-	// if secs = 10
-	// 1522895020 -> 1522895020
-	// 1522895021 -> 1522895020
-	// 1522895028 -> 1522895020
-	// 1522895030 -> 1522895030
-	secs := int64(duration / time.Second) // a
-	t := slotTime.Unix()                  // b
-	slot := (t / secs) * secs             // c
-	return keybase + ":" + strconv.FormatInt(slot, 10)
 }

@@ -34,14 +34,17 @@ type FakeLimitStore struct {
 	forceBlock  bool
 }
 
-func (fl *FakeLimitStore) Incr(context context.Context, key string, incryBy uint, maxBeforeBlock uint64, expireIn time.Duration) (uint64, bool, error) {
+func (fl *FakeLimitStore) Incr(context context.Context, incryBy uint, key string, limit Limit) (uint64, error) {
 	if fl.injectedErr != nil {
-		return 0, false, fl.injectedErr
+		return 0, fl.injectedErr
 	}
 
 	fl.count[key] += uint64(incryBy)
 
-	return fl.count[key], fl.forceBlock, nil
+	if fl.forceBlock {
+		return limit.Count + 1, nil
+	}
+	return fl.count[key], nil
 }
 
 func TestLimitString(t *testing.T) {
@@ -168,7 +171,7 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, LimitProvider: flp, Counter: fstore, Logger: TestingLogger}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
-	slot := SlotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
+	slot := slotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
 	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
@@ -303,7 +306,7 @@ func TestSlotKeyGeneration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := SlotKey(test.request.RemoteAddress, test.requestTime, test.limitDuration)
+			got := slotKey(test.request.RemoteAddress, test.requestTime, test.limitDuration)
 			if got != test.want {
 				t.Errorf("got %v, wanted %v", got, test.want)
 			}

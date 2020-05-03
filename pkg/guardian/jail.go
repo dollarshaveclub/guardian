@@ -123,17 +123,14 @@ func (gj *GenericJailer) IsBanned(ctx context.Context, request Request) (banned 
 		return false, nil
 	}
 
-	key := SlotKey(gj.keyFunc(request), time.Now().UTC(), jail.Limit.Duration)
-	gj.logger.Debugf("generated key %v for request %v", key, request)
-
-	currCount, blocked, err := gj.counter.Incr(ctx, key, 1, jail.Limit.Count, jail.Limit.Duration)
+	currCount, err := gj.counter.Incr(ctx, 1, gj.keyFunc(request), jail.Limit)
 	if err != nil {
 		err := errors.Wrap(err, fmt.Sprintf(" error incrementing counter for request: %v", request))
 		gj.logger.WithError(err).Errorf("error incrementing counter")
 		return false, err
 	}
 
-	banned = blocked || currCount > jail.Limit.Count
+	banned = currCount > jail.Limit.Count
 	if banned {
 		gj.store.AddPrisoner(request.RemoteAddress, jail)
 		gj.logger.Debugf("banning ip: %v, due to jail: %v", request.RemoteAddress, jail)

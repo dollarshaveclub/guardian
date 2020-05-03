@@ -10,25 +10,28 @@ import (
 	"github.com/go-redis/redis"
 )
 
-func newTestRedisCounter(t *testing.T) (*RedisCounter, *miniredis.Miniredis) {
+func newTestFixedWindowCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredis) {
 	s, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("error creating miniredis")
 	}
 
 	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
-	return NewRedisCounter(redis, false, TestingLogger, NullReporter{}), s
+	return NewFixedWindowCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 
-func TestRedisCounterIncr(t *testing.T) {
-	c, s := newTestRedisCounter(t)
+func TestFixedWindowCounterIncr(t *testing.T) {
+	c, s := newTestFixedWindowCounter(t)
 	defer s.Close()
 
 	key := "test_key"
 	namespacedKey := NamespacedKey(limitStoreNamespace, "test_key")
 	incrBy := uint(10)
-	expire := 1 * time.Second
-	maxBlock := uint64(15)
+	limit := Limit{
+		Count:    15,
+		Duration: 1 * time.Second,
+		Enabled:  true,
+	}
 
 	existingCount := 5
 	_, err := s.Incr(namespacedKey, existingCount)
@@ -36,15 +39,14 @@ func TestRedisCounterIncr(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), incrBy, key, limit)
+	c.Incr(context.Background(), incrBy, key, limit)
 
 	time.Sleep(1 * time.Second) // wait for async increment
 
-	_, blocked, err := c.Incr(context.Background(), key, 1, maxBlock, expire)
-	expectedBlock := true
-	if blocked != expectedBlock {
-		t.Fatalf("expected: %v received: %v", expectedBlock, blocked)
+	curCount, err := c.Incr(context.Background(), 1, key, limit)
+	if curCount <= limit.Count {
+		t.Fatalf("expected the current count: %d to be greater than the limit count: %v", curCount, limit.Count)
 	}
 
 	expectedCount := uint(existingCount) + incrBy + incrBy
@@ -63,17 +65,20 @@ func TestRedisCounterIncr(t *testing.T) {
 	}
 }
 
-func TestPrune(t *testing.T) {
-	c, s := newTestRedisCounter(t)
+func TestFixedWindowPrune(t *testing.T) {
+	c, s := newTestFixedWindowCounter(t)
 	defer s.Close()
 
 	key := "test_key"
-	incrBy := uint(5)
-	expire := 1 * time.Second
-	maxBlock := uint64(15)
+	incrBy := uint(10)
+	limit := Limit{
+		Count:    15,
+		Duration: 1 * time.Second,
+		Enabled:  true,
+	}
 
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
-	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), incrBy, key, limit)
+	c.Incr(context.Background(), incrBy, key, limit)
 
 	time.Sleep(time.Second)
 
