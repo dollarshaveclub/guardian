@@ -69,8 +69,11 @@ func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy u
 	existing := rs.cache.m[key]
 	rs.cache.RUnlock()
 
-
-	// Note: I think there could be an argument made to remove this optimization altogether
+	// Since this is a fixed window counter, we can assume that the counter only increases during the given window.
+	// Therefore, if the existing value is greater than the limit, it's safe to perform this optimization which removes
+	// the requirement for communicating with redis at all.
+	// However, I think it's a bit confusing to users of the FixedWindowCounter. I am leaving it in here to maintain the
+	// previous behavior.
 	if existing.val > limit.Count {
 		return existing.val + uint64(incrBy), nil
 	}
