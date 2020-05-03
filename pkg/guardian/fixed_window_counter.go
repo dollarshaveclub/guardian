@@ -36,12 +36,12 @@ type FixedWindowCounter struct {
 	cache       *lockingExpiringMap
 }
 
-func (rs *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
+func (fwc *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(pruneInterval)
 	for {
 		select {
 		case <-ticker.C:
-			rs.pruneCache(time.Now().UTC())
+			fwc.pruneCache(time.Now().UTC())
 		case <-stop:
 			ticker.Stop()
 			return
@@ -49,25 +49,25 @@ func (rs *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan struc
 	}
 }
 
-func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
+func (fwc *FixedWindowCounter) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
 	runIncrFunc := func() (item, error) {
-		count, err := rs.doIncr(context, key, incrBy, limit.Duration)
+		count, err := fwc.doIncr(context, key, incrBy, limit.Duration)
 		if err != nil {
-			rs.logger.WithError(err).Error("error incrementing")
+			fwc.logger.WithError(err).Error("error incrementing")
 			return item{}, err
 		}
 
 		item := item{val: count, expireAt: time.Now().UTC().Add(limit.Duration)}
-		rs.cache.Lock()
-		rs.cache.m[key] = item
-		rs.cache.Unlock()
+		fwc.cache.Lock()
+		fwc.cache.m[key] = item
+		fwc.cache.Unlock()
 
 		return item, nil
 	}
 
-	rs.cache.RLock()
-	existing := rs.cache.m[key]
-	rs.cache.RUnlock()
+	fwc.cache.RLock()
+	existing := fwc.cache.m[key]
+	fwc.cache.RUnlock()
 
 	// Since this is a fixed window counter, we can assume that the counter only increases during the given window.
 	// Therefore, if the existing value is greater than the limit, it's safe to perform this optimization which removes
@@ -78,7 +78,7 @@ func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy u
 		return existing.val + uint64(incrBy), nil
 	}
 
-	if !rs.synchronous {
+	if !fwc.synchronous {
 		go runIncrFunc()
 
 		count := existing.val + uint64(incrBy)
@@ -89,38 +89,38 @@ func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy u
 	return curr.val, err
 }
 
-func (rs *FixedWindowCounter) pruneCache(olderThan time.Time) {
+func (fwc *FixedWindowCounter) pruneCache(olderThan time.Time) {
 	start := time.Now().UTC()
 	cacheSize := 0
 	pruned := 0
 	defer func() {
-		rs.reporter.RedisCounterPruned(time.Since(start), float64(cacheSize), float64(pruned))
+		fwc.reporter.RedisCounterPruned(time.Since(start), float64(cacheSize), float64(pruned))
 	}()
 
-	rs.cache.Lock()
-	defer rs.cache.Unlock()
+	fwc.cache.Lock()
+	defer fwc.cache.Unlock()
 
-	cacheSize = len(rs.cache.m)
-	for k, v := range rs.cache.m {
+	cacheSize = len(fwc.cache.m)
+	for k, v := range fwc.cache.m {
 		if v.expireAt.Before(olderThan) {
-			delete(rs.cache.m, k)
+			delete(fwc.cache.m, k)
 			pruned++
 		}
 	}
 }
 
-func (rs *FixedWindowCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
+func (fwc *FixedWindowCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
 	start := time.Now().UTC()
 	var err error
 	defer func() {
-		rs.reporter.RedisCounterIncr(time.Since(start), err != nil)
+		fwc.reporter.RedisCounterIncr(time.Since(start), err != nil)
 	}()
 
 	key = NamespacedKey(limitStoreNamespace, key)
 
-	rs.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())
+	fwc.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())
 
-	pipe := rs.redis.Pipeline()
+	pipe := fwc.redis.Pipeline()
 	defer pipe.Close()
 	incr := pipe.IncrBy(key, int64(incrBy))
 	expire := pipe.Expire(key, expireIn)
@@ -128,7 +128,7 @@ func (rs *FixedWindowCounter) doIncr(context context.Context, key string, incrBy
 	if err != nil {
 		msg := fmt.Sprintf("error incrementing key %v with increase %d and expiration %v", key, incrBy, expireIn)
 		err = errors.Wrap(err, msg)
-		rs.logger.WithError(err).Error("error executing pipeline")
+		fwc.logger.WithError(err).Error("error executing pipeline")
 		return 0, err
 	}
 
@@ -137,10 +137,10 @@ func (rs *FixedWindowCounter) doIncr(context context.Context, key string, incrBy
 
 	if !expireSet {
 		err = fmt.Errorf("expire timeout not set, key does not exist")
-		rs.logger.WithError(err).Error("error executing pipeline")
+		fwc.logger.WithError(err).Error("error executing pipeline")
 		return count, err
 	}
 
-	rs.logger.Debugf("Successfully executed pipeline and got response: %v %v", count, expireSet)
+	fwc.logger.Debugf("Successfully executed pipeline and got response: %v %v", count, expireSet)
 	return count, nil
 }

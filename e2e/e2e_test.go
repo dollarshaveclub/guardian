@@ -278,7 +278,7 @@ func TestJails(t *testing.T) {
 		if j.Jail.Limit.Enabled {
 			t.Logf("sleeping for ban_duration: %v + 2 seconds to ensure the prisoner is removed", j.Jail.BanDuration)
 			time.Sleep(j.Jail.BanDuration)
-			time.Sleep(2 * time.Second)  // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
+			time.Sleep(2 * time.Second) // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
 			res := GET(t, "192.168.1.43", j.Route)
 			if res.StatusCode != 200 {
 				t.Fatalf("prisoner was never removed, received unexpected status code: %d, %v", res.StatusCode, j.Jail)
