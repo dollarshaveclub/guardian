@@ -22,19 +22,17 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	}
 
 	stop := make(chan struct{})
-	redis := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr: mr.Addr(),
-		MaxRetries: 3,
-		IdleTimeout: 1 * time.Second,
 	})
-	if res := redis.Ping(); res.Err() != nil {
+	if res := redisClient.Ping(); res.Err() != nil {
 		t.Fatalf("error pinging redis: %v", res.Err())
 	}
-	redisConfStore, err := NewRedisConfStore(redis, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, false, 1000, logger.WithField("context", "redis-conf-provider"), nil)
+	redisConfStore, err := NewRedisConfStore(redisClient, []net.IPNet{}, []net.IPNet{}, Limit{Count: 15, Duration: time.Second}, false, false, 1000, logger.WithField("context", "redis-conf-provider"), nil)
 	if err != nil {
 		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
 	}
-	fixedWindowCounter := NewFixedWindowCounter(redis, false, logger.WithField("context", "fixed-window-counter"), NullReporter{})
+	fixedWindowCounter := NewFixedWindowCounter(redisClient, false, logger.WithField("context", "fixed-window-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
@@ -113,11 +111,12 @@ func ipStringToIPNet(t *testing.T, ip string) net.IPNet {
 func TestBasicFunctionality(t *testing.T) {
 
 	logger := logrus.StandardLogger()
-	server, miniredis, redisConfStore, stop := newAcceptanceGuardianServer(t, logger)
+	server, redis, redisConfStore, stop := newAcceptanceGuardianServer(t, logger)
 
 	defer func() {
 		close(stop)
-		miniredis.Close()
+		time.Sleep(time.Second) // Determine why this change requires us to sleep before closing miniredis
+		redis.Close()
 	}()
 
 	whitelistedIP := "10.10.10.10"
