@@ -16,7 +16,13 @@ func newTestRedisCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredi
 		t.Fatalf("error creating miniredis")
 	}
 
-	redis := redis.NewClient(&redis.Options{Addr: s.Addr()})
+	redis := redis.NewClient(&redis.Options{
+		Addr: s.Addr(),
+		MaxRetries: 3,
+		IdleTimeout: time.Second,
+		ReadTimeout: time.Second,
+		WriteTimeout: time.Second,
+	})
 	return NewFixedWindowCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 

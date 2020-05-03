@@ -113,6 +113,7 @@ func TestBasicFunctionality(t *testing.T) {
 
 	defer func() {
 		close(stop)
+		time.Sleep(time.Second) // let open miniredis Connections terminate
 		miniredis.Close()
 	}()
 

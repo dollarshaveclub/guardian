@@ -70,8 +70,7 @@ func (rs *FixedWindowCounter) Incr(context context.Context, key string, incrBy u
 	rs.cache.RUnlock()
 
 
-	// Note: This seems to be required for tests to pass.
-	// Otherwise, doesn't seem like miniredis is able to handle the load from these tests.
+	// Note: I think there could be an argument made to remove this optimization altogether
 	if existing.val > limit.Count {
 		return existing.val + uint64(incrBy), nil
 	}
