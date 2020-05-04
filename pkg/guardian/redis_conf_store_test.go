@@ -370,6 +370,13 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", fooBarLimit, got)
 	}
 
+	// Ensure configuration cache is updated after a confSyncInterval
+	c.UpdateCachedConf()
+	cachedItem := c.GetRouteRateLimit(*fooBarURL)
+	if !cmp.Equal(cachedItem, fooBarLimit) {
+		t.Errorf("expected: %v, received: %v", fooBarLimit, cachedItem)
+	}
+
 	var urls []url.URL
 	urls = append(urls, *fooBarURL)
 	if err := c.RemoveRouteRateLimits(urls); err != nil {
@@ -380,6 +387,13 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 	got, err = c.FetchRouteRateLimit(*fooBarURL)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
+	}
+
+	// Ensure configuration cache is updated after a confSyncInterval
+	c.UpdateCachedConf()
+	cachedItem = c.GetRouteRateLimit(*fooBarURL)
+	if !cmp.Equal(cachedItem, Limit{}) {
+		t.Errorf("expected: %v, received: %v", Limit{}, cachedItem)
 	}
 
 	got, err = c.FetchRouteRateLimit(*fooBazURL)
@@ -522,6 +536,13 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", fooBarJail, got)
 	}
 
+	// Ensure configuration cache is updated after a confSyncInterval
+	c.UpdateCachedConf()
+	cachedItem := c.GetJail(*fooBarURL)
+	if !cmp.Equal(cachedItem, fooBarJail) {
+		t.Errorf("expected: %v, received: %v", fooBarJail, cachedItem)
+	}
+
 	var urls []url.URL
 	urls = append(urls, *fooBarURL)
 	if err := c.RemoveJails(urls); err != nil {
@@ -532,6 +553,13 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 	got, err = c.FetchJail(*fooBarURL)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
+	}
+
+	// Ensure configuration cache is updated after a confSyncInterval
+	c.UpdateCachedConf()
+	cachedItem = c.GetJail(*fooBarURL)
+	if !cmp.Equal(cachedItem, Jail{}) {
+		t.Errorf("expected: %v, received: %v", Jail{}, cachedItem)
 	}
 
 	got, err = c.FetchJail(*fooBazURL)

@@ -604,6 +604,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.reportOnly = *fetched.reportOnly
 	}
 
+	rs.conf.routeRateLimits = make(map[url.URL]Limit, len(fetched.routeLimitCounts))
 	for url, count := range fetched.routeLimitCounts {
 		duration, _ := fetched.routeLimitDurations[url]
 		enabled, _ := fetched.routeRateLimitsEnabled[url]
@@ -618,6 +619,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		}
 	}
 
+	rs.conf.jails = make(map[url.URL]Jail, len(fetched.jailLimitCounts))
 	for url, count := range fetched.jailLimitCounts {
 		duration, _ := fetched.jailLimitDurations[url]
 		enabled, _ := fetched.jailLimitsEnabled[url]
