@@ -3,7 +3,9 @@ package guardian
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
+	"path"
 	"testing"
 	"time"
 )
@@ -28,23 +30,29 @@ func (rlp *FakeRouteRateLimitProvider) GetLimit(req Request) Limit {
 	return rlp.limits[*reqUrl]
 }
 
+const fakeLimitStoreNamespace = "fake_limit_store"
+
 type FakeLimitStore struct {
 	count       map[string]uint64
 	injectedErr error
 	forceBlock  bool
 }
 
-func (fl *FakeLimitStore) Incr(context context.Context, key string, incryBy uint, limit Limit) (uint64, error) {
-	if fl.injectedErr != nil {
-		return 0, fl.injectedErr
+func (fc *FakeLimitStore) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
+	if fc.injectedErr != nil {
+		return 0, fc.injectedErr
 	}
 
-	if fl.forceBlock {
+	if fc.forceBlock {
 		return limit.Count + 1, nil
 	}
 
-	fl.count[key] += uint64(incryBy)
-	return fl.count[key], nil
+	fc.count[key] += uint64(incrBy)
+	return fc.count[key], nil
+}
+
+func (fc *FakeLimitStore) namespacedKey(key string) string {
+	return path.Join(fakeLimitStoreNamespace, key)
 }
 
 func TestLimitString(t *testing.T) {
@@ -64,7 +72,6 @@ func TestLimitRateLimits(t *testing.T) {
 	flp := &FakeGlobalLimitProvider{limit}
 	fstore := &FakeLimitStore{count: make(map[string]uint64)}
 	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, LimitProvider: flp, Counter: fstore, Logger: TestingLogger}
-
 	req := Request{RemoteAddress: "192.168.1.2"}
 	sentCount := 10
 
@@ -171,8 +178,8 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, LimitProvider: flp, Counter: fstore, Logger: TestingLogger}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
-	slot := SlotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
-	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
+	window := fstore.namespacedKey(IPRateLimiterKeyFunc(req))
+	fstore.count[window] = uint64(math.MaxUint32 + 1) // set slot count to some value > max uint32
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
@@ -267,50 +274,4 @@ func TestRouteRateLimiter(t *testing.T) {
 			t.Fatalf("remaining was %d when it should have been %d", remaining, expectedRemaining)
 		}
 	}
-}
-
-func TestSlotKeyGeneration(t *testing.T) {
-
-	referenceRequest := Request{RemoteAddress: "192.168.1.2"}
-	referenceTime := time.Unix(1522969710, 0)
-
-	tests := []struct {
-		name          string
-		request       Request
-		requestTime   time.Time
-		limitDuration time.Duration
-		want          string
-	}{
-		{
-			name:          "BucketSameSecond",
-			request:       referenceRequest,
-			requestTime:   referenceTime,
-			limitDuration: 10 * time.Second,
-			want:          "192.168.1.2:1522969710",
-		},
-		{
-			name:          "BucketRoundsDown",
-			request:       referenceRequest,
-			requestTime:   referenceTime.Add(5 * time.Second),
-			limitDuration: 10 * time.Second,
-			want:          "192.168.1.2:1522969710",
-		},
-		{
-			name:          "BucketNext",
-			request:       referenceRequest,
-			requestTime:   referenceTime.Add(10 * time.Second),
-			limitDuration: 10 * time.Second,
-			want:          "192.168.1.2:1522969720",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := SlotKey(test.request.RemoteAddress, test.requestTime, test.limitDuration)
-			if got != test.want {
-				t.Errorf("got %v, wanted %v", got, test.want)
-			}
-		})
-	}
-
 }

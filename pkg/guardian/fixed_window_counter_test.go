@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-func newTestRedisCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredis) {
+func newTestFixedWindowCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredis) {
 	s, err := miniredis.Run()
 	if err != nil {
 		t.Fatalf("error creating miniredis")
@@ -27,39 +28,38 @@ func newTestRedisCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Miniredi
 }
 
 func TestFixedWindowIncr(t *testing.T) {
-	c, s := newTestRedisCounter(t)
+	c, s := newTestFixedWindowCounter(t)
 	defer s.Close()
-
+	limit := Limit{15, time.Hour, true}
 	key := "test_key"
-	namespacedKey := NamespacedKey(limitStoreNamespace, "test_key")
 	incrBy := uint(10)
-	limit := Limit{15, time.Second, true}
 	existingCount := 5
-	_, err := s.Incr(namespacedKey, existingCount)
+	start := time.Now().UTC()
+	_, err := s.Incr(c.windowKey(key, start, limit.Duration), existingCount)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	c.Incr(context.Background(), key, incrBy, limit)
-	c.Incr(context.Background(), key, incrBy, limit)
+	c.Incr(context.Background(), "test_key", incrBy, limit)
+	c.Incr(context.Background(), "test_key", incrBy, limit)
 
 	time.Sleep(1 * time.Second) // wait for async increment
 
-	curCount, err := c.Incr(context.Background(), key, 1, limit)
+	curCount, err := c.Incr(context.Background(), "test_key", 1, limit)
 	if curCount < limit.Count {
 		t.Fatalf("expected current count to be greater than limit: %d received: %d", limit.Count, curCount)
 	}
 
 	expectedCount := uint(existingCount) + incrBy + incrBy
-	gotCountStr, err := s.Get(namespacedKey)
+	gotCountStr, err := s.Get(c.windowKey(key, start, limit.Duration))
 	gotCount, _ := strconv.Atoi(gotCountStr)
 	if uint(gotCount) != expectedCount {
 		t.Fatalf("expected: %v received: %v", expectedCount, gotCount)
 	}
 
-	s.FastForward(1 * time.Second)
+	s.FastForward(1 * time.Hour)
 
-	_, err = s.Get(namespacedKey)
+	_, err = s.Get(key)
 	expected := miniredis.ErrKeyNotFound
 	if err != expected {
 		t.Fatalf("expected: %v received: %v", expected, err)
@@ -67,7 +67,7 @@ func TestFixedWindowIncr(t *testing.T) {
 }
 
 func TestPrune(t *testing.T) {
-	c, s := newTestRedisCounter(t)
+	c, s := newTestFixedWindowCounter(t)
 	defer s.Close()
 
 	key := "test_key"
@@ -89,6 +89,52 @@ func TestPrune(t *testing.T) {
 	_, ok = c.cache.m[key]
 	if ok {
 		t.Fatalf("key exists in cache when it should not")
+	}
+}
+
+func TestFixedWindowKey(t *testing.T) {
+	c, s := newTestFixedWindowCounter(t)
+	defer s.Close()
+	referenceRequest := Request{RemoteAddress: "192.168.1.2"}
+	referenceTime := time.Unix(1522969710, 0)
+
+	tests := []struct {
+		name          string
+		request       Request
+		requestTime   time.Time
+		limitDuration time.Duration
+		want          string
+	}{
+		{
+			name:          "BucketSameSecond",
+			request:       referenceRequest,
+			requestTime:   referenceTime,
+			limitDuration: 10 * time.Second,
+			want:          path.Join(fixedWindowNamespace, referenceRequest.RemoteAddress, "1522969710"),
+		},
+		{
+			name:          "BucketRoundsDown",
+			request:       referenceRequest,
+			requestTime:   referenceTime.Add(5 * time.Second),
+			limitDuration: 10 * time.Second,
+			want:          path.Join(fixedWindowNamespace, referenceRequest.RemoteAddress, "1522969710"),
+		},
+		{
+			name:          "BucketNext",
+			request:       referenceRequest,
+			requestTime:   referenceTime.Add(10 * time.Second),
+			limitDuration: 10 * time.Second,
+			want:          path.Join(fixedWindowNamespace, referenceRequest.RemoteAddress, "1522969720"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := c.windowKey(IPRateLimiterKeyFunc(test.request), test.requestTime, test.limitDuration)
+			if got != test.want {
+				t.Errorf("got %v, wanted %v", got, test.want)
+			}
+		})
 	}
 
 }

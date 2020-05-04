@@ -3,6 +3,8 @@ package guardian
 import (
 	"context"
 	"fmt"
+	"path"
+	"strconv"
 	"sync"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const limitStoreNamespace = "limit_store"
+const fixedWindowNamespace = "fixed_window"
 
 func NewFixedWindowCounter(redis *redis.Client, synchronous bool, logger logrus.FieldLogger, reporter MetricReporter) *FixedWindowCounter {
 	return &FixedWindowCounter{redis: redis, synchronous: synchronous, logger: logger, cache: &lockingExpiringMap{m: make(map[string]item)}, reporter: reporter}
@@ -73,7 +75,7 @@ func (fwc *FixedWindowCounter) Incr(context context.Context, key string, incrBy 
 	// Therefore, if the existing value is greater than the limit, it's safe to perform this optimization which removes
 	// the requirement for communicating with redis at all.
 	// However, I think it's a bit confusing to users of the FixedWindowCounter. I am leaving it in here to maintain the
-	// previous behavior.
+	// previous behavior and because it provides an observable performance boost.
 	if existing.val > limit.Count {
 		return existing.val + uint64(incrBy), nil
 	}
@@ -116,10 +118,7 @@ func (fwc *FixedWindowCounter) doIncr(context context.Context, key string, incrB
 		fwc.reporter.RedisCounterIncr(time.Since(start), err != nil)
 	}()
 
-	key = NamespacedKey(limitStoreNamespace, key)
-
 	fwc.logger.Debugf("Sending pipeline for key %v INCRBY %v EXPIRE %v", key, incrBy, expireIn.Seconds())
-
 	pipe := fwc.redis.Pipeline()
 	defer pipe.Close()
 	incr := pipe.IncrBy(key, int64(incrBy))
@@ -143,4 +142,19 @@ func (fwc *FixedWindowCounter) doIncr(context context.Context, key string, incrB
 
 	fwc.logger.Debugf("Successfully executed pipeline and got response: %v %v", count, expireSet)
 	return count, nil
+}
+
+func (fwc *FixedWindowCounter) windowKey(requestMetadata string, slotTime time.Time, duration time.Duration) string {
+	// a) convert to seconds
+	// b) get slot time unix epoch seconds
+	// c) use integer division to bucket based on limit.Duration
+	// if secs = 10
+	// 1522895020 -> 1522895020
+	// 1522895021 -> 1522895020
+	// 1522895028 -> 1522895020
+	// 1522895030 -> 1522895030
+	secs := int64(duration / time.Second) // a
+	t := slotTime.Unix()                  // b
+	slot := (t / secs) * secs             // c
+	return path.Join(fixedWindowNamespace, requestMetadata, strconv.FormatInt(slot, 10))
 }

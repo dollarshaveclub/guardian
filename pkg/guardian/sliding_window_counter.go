@@ -1,7 +1,6 @@
 package guardian
 
 import (
-	"context"
 	"github.com/go-redis/redis"
 	"github.com/sirupsen/logrus"
 	"sync"
@@ -76,8 +75,4 @@ func (swc *SlidingWindowCounter) pruneCache(olderThan time.Time) {
 			pruned++
 		}
 	}
-}
-
-func (fwc *FixedWindowCounter) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
-
 }
