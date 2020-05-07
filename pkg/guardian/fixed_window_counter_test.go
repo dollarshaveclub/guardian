@@ -27,9 +27,14 @@ func newTestFixedWindowCounter(t *testing.T) (*FixedWindowCounter, *miniredis.Mi
 	return NewFixedWindowCounter(redis, false, TestingLogger, NullReporter{}), s
 }
 
+func closeMiniredis(s *miniredis.Miniredis) {
+	time.Sleep(1 * time.Second)
+	s.Close()
+}
+
 func TestFixedWindowIncr(t *testing.T) {
 	c, s := newTestFixedWindowCounter(t)
-	defer s.Close()
+	defer closeMiniredis(s)
 	limit := Limit{15, time.Hour, true}
 	key := "test_key"
 	incrBy := uint(10)
@@ -40,8 +45,8 @@ func TestFixedWindowIncr(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	c.Incr(context.Background(), "test_key", incrBy, limit)
-	c.Incr(context.Background(), "test_key", incrBy, limit)
+	c.Incr(context.Background(), key, incrBy, limit)
+	c.Incr(context.Background(), key, incrBy, limit)
 
 	time.Sleep(1 * time.Second) // wait for async increment
 
@@ -52,6 +57,7 @@ func TestFixedWindowIncr(t *testing.T) {
 
 	expectedCount := uint(existingCount) + incrBy + incrBy
 	gotCountStr, err := s.Get(c.windowKey(key, start, limit.Duration))
+
 	gotCount, _ := strconv.Atoi(gotCountStr)
 	if uint(gotCount) != expectedCount {
 		t.Fatalf("expected: %v received: %v", expectedCount, gotCount)
@@ -72,21 +78,22 @@ func TestPrune(t *testing.T) {
 
 	key := "test_key"
 	incrBy := uint(5)
-	limit := Limit{15, time.Second, true}
+	limit := Limit{15, time.Hour, true}
+	fixedWindowKey := c.windowKey(key, time.Now().UTC(), limit.Duration)
 
 	c.Incr(context.Background(), key, incrBy, limit)
 	c.Incr(context.Background(), key, incrBy, limit)
 
 	time.Sleep(time.Second)
 
-	_, ok := c.cache.m[key]
+	_, ok := c.cache.m[fixedWindowKey]
 	if !ok {
 		t.Fatalf("key should exist in cache but does not")
 	}
 
-	c.pruneCache(time.Now().UTC().Add(2 * time.Second))
+	c.pruneCache(time.Now().UTC().Add(2 * time.Hour))
 
-	_, ok = c.cache.m[key]
+	_, ok = c.cache.m[fixedWindowKey]
 	if ok {
 		t.Fatalf("key exists in cache when it should not")
 	}

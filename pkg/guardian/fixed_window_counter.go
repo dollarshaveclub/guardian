@@ -51,7 +51,8 @@ func (fwc *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan stru
 	}
 }
 
-func (fwc *FixedWindowCounter) Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error) {
+func (fwc *FixedWindowCounter) Incr(context context.Context, keyBase string, incrBy uint, limit Limit) (uint64, error) {
+	key := fwc.windowKey(keyBase, time.Now(), limit.Duration)
 	runIncrFunc := func() (item, error) {
 		count, err := fwc.doIncr(context, key, incrBy, limit.Duration)
 		if err != nil {
