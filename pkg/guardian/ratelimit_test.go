@@ -172,14 +172,13 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 
 	// 3 rps
-	limit := Limit{Count: ^uint64(0), Duration: 1 * time.Second, Enabled: true}
+	limit := Limit{Count: math.MaxUint32, Duration: 1 * time.Hour, Enabled: true}
 	flp := &FakeGlobalLimitProvider{limit}
 	fstore := &FakeLimitStore{count: make(map[string]uint64)}
 	rl := &GenericRateLimiter{KeyFunc: IPRateLimiterKeyFunc, LimitProvider: flp, Counter: fstore, Logger: TestingLogger}
 
 	req := Request{RemoteAddress: "192.168.1.2"}
-	window := fstore.namespacedKey(IPRateLimiterKeyFunc(req))
-	fstore.count[window] = uint64(math.MaxUint32 + 1) // set slot count to some value > max uint32
+	fstore.count[IPRateLimiterKeyFunc(req)] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
 
 	blocked, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
