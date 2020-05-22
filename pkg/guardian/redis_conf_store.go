@@ -100,15 +100,85 @@ type lockingConf struct {
 	conf
 }
 
-// JailConfigEntry models an entry in a config file for adding a jail
-type JailConfigEntry struct {
-	Route string `yaml:"route"`
-	Jail  Jail   `yaml:"jail"`
+// ConfigKind models a configuration file's kind.
+type ConfigKind string
+
+const (
+	// GlobalRateLimitConfigKind identifies a Global Rate Limit config file.
+	GlobalRateLimitConfigKind = "GlobalRateLimit"
+	// RateLimitConfigKind identifies a Rate Limit config file.
+	RateLimitConfigKind = "RateLimit"
+	// JailConfigKind identifies a Jail config file.
+	JailConfigKind = "Jail"
+	// JailConfigKind identifies a Global Settings config file.
+	GlobalSettingsConfigKind = "GlobalSettings"
+)
+
+// ConfigHeader models the shared, top-level fields of configuration files.
+type ConfigHeader struct {
+	Version     string `yaml:"version"`
+	Kind        string `yaml:"kind"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
 }
 
-// JailConfig
+// TODO: Add doc comments for the rest of the config model
+
+type ConfigLimit struct {
+	Count    uint64        `yaml:"count"`
+	Duration time.Duration `yaml:"duration"`
+	Enabled  bool          `yaml:"enabled"`
+}
+
+func (cl ConfigLimit) Limit() Limit {
+	return Limit{
+		Count: cl.Count,
+		Duration: cl.Duration,
+		Enabled: cl.Enabled,
+	}
+}
+
+type ConfigConditions struct {
+	Path string `yaml:"path"`
+}
+
+type GlobalRateLimitConfigSpec struct {
+	Limit ConfigLimit `yaml:"limit"`
+}
+
+type GlobalRateLimitConfig struct {
+	ConfigHeader `yaml:",inline"`
+	Spec         GlobalRateLimitConfigSpec `yaml:"spec"`
+}
+
+type RateLimitConfigSpec struct {
+	Limit      ConfigLimit      `yaml:"limit"`
+	Conditions ConfigConditions `yaml:"conditions"`
+}
+
+type RateLimitConfig struct {
+	ConfigHeader `yaml:",inline"`
+	Spec         RateLimitConfigSpec `yaml:"spec"`
+}
+
+type JailConfigSpec struct {
+	Limit       ConfigLimit      `yaml:"limit"`
+	Conditions  ConfigConditions `yaml:"conditions"`
+	BanDuration time.Duration    `yaml:"ban_duration"`
+}
+
 type JailConfig struct {
-	Jails []JailConfigEntry `yaml:"jails"`
+	ConfigHeader `yaml:",inline"`
+	Spec         JailConfigSpec `yaml:"spec"`
+}
+
+type GlobalSettingsConfigSpec struct {
+	ReportOnly bool `yaml:"reportOnly"`
+}
+
+type GlobalSettingsConfig struct {
+	ConfigHeader `yaml:",inline"`
+	Spec         GlobalSettingsConfigSpec `yaml:"spec"`
 }
 
 // RouteRateLimitConfigEntry models an entry in a config file for adding route rate limits.
