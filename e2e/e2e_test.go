@@ -22,47 +22,6 @@ import (
 var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
 var envoyAddr = flag.String("envoy-addr", "localhost:8080", "envoy address")
 
-func TestGlobalRateLimit(t *testing.T) {
-	resetRedis(*redisAddr)
-
-	guardianConfig := guardianConfig{
-		whitelist:                 []string{},
-		blacklist:                 []string{},
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
-		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-	}
-	applyGuardianConfig(t, *redisAddr, guardianConfig)
-
-	file, err := os.Open(guardianConfig.globalSettingsConfigPath)
-	if err != nil {
-		t.Fatalf("error opening config file: %v", err)
-	}
-	defer file.Close()
-	config := guardian.GlobalRateLimitConfig{}
-	err = yaml.NewDecoder(file).Decode(&config)
-	if err != nil {
-		t.Fatalf("error decoding yaml: %v", err)
-	}
-
-	for i := uint64(0); i < 10; i++ {
-		if len(os.Getenv("SYNC")) == 0 {
-			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
-		}
-
-		res := GET(t, "192.168.1.234", "/")
-		res.Body.Close()
-
-		want := 200
-		if i >= config.Spec.Limit.Count {
-			want = 429
-		}
-
-		if res.StatusCode != want {
-			t.Fatalf("wanted %v, got %v, iteration %v", want, res.StatusCode, i)
-		}
-	}
-}
-
 func TestWhitelist(t *testing.T) {
 	resetRedis(*redisAddr)
 
@@ -107,6 +66,47 @@ func TestBlacklist(t *testing.T) {
 		want := 429
 		if res.StatusCode != want {
 			t.Fatalf("wanted %v, got %v", want, res.StatusCode)
+		}
+	}
+}
+
+func TestGlobalRateLimit(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	guardianConfig := guardianConfig{
+		whitelist:                 []string{},
+		blacklist:                 []string{},
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, guardianConfig)
+
+	file, err := os.Open(guardianConfig.globalRateLimitConfigPath)
+	if err != nil {
+		t.Fatalf("error opening config file: %v", err)
+	}
+	defer file.Close()
+	config := guardian.GlobalRateLimitConfig{}
+	err = yaml.NewDecoder(file).Decode(&config)
+	if err != nil {
+		t.Fatalf("error decoding yaml: %v", err)
+	}
+
+	for i := uint64(0); i < 10; i++ {
+		if len(os.Getenv("SYNC")) == 0 {
+			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+		}
+
+		res := GET(t, "192.168.1.234", "/")
+		res.Body.Close()
+
+		want := 200
+		if i >= config.Spec.Limit.Count {
+			want = 429
+		}
+
+		if res.StatusCode != want {
+			t.Fatalf("wanted %v, got %v, iteration %v", want, res.StatusCode, i)
 		}
 	}
 }
