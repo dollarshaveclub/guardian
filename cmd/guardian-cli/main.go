@@ -222,7 +222,7 @@ func main() {
 	case getPrisonersCmd.FullCommand():
 		prisoners, err := getPrisoners(redisConfStore)
 		if err != nil {
-			fatalerror(fmt.Errorf("error fetching prisoners: %v"))
+			fatalerror(fmt.Errorf("error fetching prisoners: %v", err))
 		}
 		prisonersJson, err := yaml.Marshal(prisoners)
 		if err != nil {
