@@ -874,6 +874,10 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsEnabledKey)
 	}
 
+	// Note: In order to match the rest of the configuration, we purposely purge the prisoners regardless of whether we
+	// can connect or update the data in Redis. This way, Guardian continues to "fail open"
+	rs.conf.prisoners.purge()
+
 	lock, err := rs.obtainRedisPrisonersLock()
 	if err != nil {
 		rs.logger.Errorf("error obtaining lock in pipelined fetch: %v", err)
@@ -883,9 +887,6 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
 	expiredPrisoners := []string{}
 	prisonersCmd := rs.redis.HGetAll(redisPrisonersKey)
-	// Note: In order to match the rest of the configuration, we purposely purge the prisoners regardless of whether we
-	// can connect or update the data in Redis. This way, Guardian continues to "fail open"
-	rs.conf.prisoners.purge()
 	if prisoners, err := prisonersCmd.Result(); err == nil {
 		for ip, prisonerJson := range prisoners {
 			var prisoner Prisoner

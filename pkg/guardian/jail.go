@@ -14,7 +14,7 @@ import (
 // In the context of Guardian, a Jail is a combination of a Limit and a BanDuration.
 // If the Limit is reached, the the IP will be banned for the BanDuration.
 type Jail struct {
-	Limit       Limit         `yaml:"limit"" json:"limit"`
+	Limit       Limit         `yaml:"limit" json:"limit"`
 	BanDuration time.Duration `yaml:"ban_duration" json:"ban_duration"`
 }
 

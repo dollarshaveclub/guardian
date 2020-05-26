@@ -6,6 +6,8 @@ jobs:
     working_directory: /go/src/github.com/dollarshaveclub/guardian
     steps:
       - checkout
+      - run: test -z $(gofmt -l .  | grep -v vendor/)
+      - run: go vet ./...
       - run: go test -v ./pkg/...
       - setup_remote_docker
       - run:
