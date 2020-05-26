@@ -110,86 +110,77 @@ const (
 	RateLimitConfigKind = "RateLimit"
 	// JailConfigKind identifies a Jail config file.
 	JailConfigKind = "Jail"
-	// JailConfigKind identifies a Global Settings config file.
+	// GlobalSettingsConfigKind identifies a Global Settings config file.
 	GlobalSettingsConfigKind = "GlobalSettings"
 )
 
-// ConfigHeader models the shared, top-level fields of configuration files.
-type ConfigHeader struct {
+// TODO: Add doc comments
+type ConfigMetadata struct {
 	Version     string `yaml:"version"`
 	Kind        string `yaml:"kind"`
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 }
 
-// TODO: Add doc comments for the rest of the config model
-
-type ConfigLimit struct {
-	Count    uint64        `yaml:"count"`
-	Duration time.Duration `yaml:"duration"`
-	Enabled  bool          `yaml:"enabled"`
-}
-
-func (cl ConfigLimit) Limit() Limit {
-	return Limit{
-		Count: cl.Count,
-		Duration: cl.Duration,
-		Enabled: cl.Enabled,
-	}
-}
-
-type ConfigConditions struct {
+type Conditions struct {
 	Path string `yaml:"path"`
 }
 
-type GlobalRateLimitConfigSpec struct {
-	Limit ConfigLimit `yaml:"limit"`
+type GlobalRateLimitSpec struct {
+	Limit Limit `yaml:"limit"`
 }
 
-type GlobalRateLimitConfig struct {
-	ConfigHeader `yaml:",inline"`
-	Spec         GlobalRateLimitConfigSpec `yaml:"spec"`
+type RateLimitSpec struct {
+	Limit      Limit      `yaml:"limit"`
+	Conditions Conditions `yaml:"conditions"`
 }
 
-type RateLimitConfigSpec struct {
-	Limit      ConfigLimit      `yaml:"limit"`
-	Conditions ConfigConditions `yaml:"conditions"`
+type JailSpec struct {
+	Jail       `yaml:",inline"`
+	Conditions Conditions `yaml:"conditions"`
 }
 
-type RateLimitConfig struct {
-	ConfigHeader `yaml:",inline"`
-	Spec         RateLimitConfigSpec `yaml:"spec"`
-}
-
-type JailConfigSpec struct {
-	Limit       ConfigLimit      `yaml:"limit"`
-	Conditions  ConfigConditions `yaml:"conditions"`
-	BanDuration time.Duration    `yaml:"ban_duration"`
-}
-
-type JailConfig struct {
-	ConfigHeader `yaml:",inline"`
-	Spec         JailConfigSpec `yaml:"spec"`
-}
-
-type GlobalSettingsConfigSpec struct {
+type GlobalSettingsSpec struct {
 	ReportOnly bool `yaml:"reportOnly"`
 }
 
-type GlobalSettingsConfig struct {
-	ConfigHeader `yaml:",inline"`
-	Spec         GlobalSettingsConfigSpec `yaml:"spec"`
+type GlobalRateLimitConfig struct {
+	ConfigMetadata `yaml:",inline"`
+	Spec           GlobalRateLimitSpec `yaml:"spec"`
 }
 
-// RouteRateLimitConfigEntry models an entry in a config file for adding route rate limits.
+type RateLimitConfig struct {
+	ConfigMetadata `yaml:",inline"`
+	Spec           RateLimitSpec `yaml:"spec"`
+}
+
+type JailConfig struct {
+	ConfigMetadata `yaml:",inline"`
+	Spec           JailSpec `yaml:"spec"`
+}
+
+type GlobalSettingsConfig struct {
+	ConfigMetadata `yaml:",inline"`
+	Spec           GlobalSettingsSpec `yaml:"spec"`
+}
+
+// TODO: Required for legacy get-* commands. Probably able to clean this up somehow
+type JailConfigEntry struct {
+	Route string `yaml:"route"`
+	Jail  Jail   `yaml:"jail"`
+}
+
+type JailConfigOld struct {
+	Jails []JailConfigEntry `yaml:"jails"`
+}
+
 type RouteRateLimitConfigEntry struct {
 	Route string `yaml:"route"`
 	Limit Limit  `yaml:"limit"`
 }
 
-// RouteRateLimitConfig models the config file for adding route rate limits.
-type RouteRateLimitConfig struct {
-	RouteRatelimits []RouteRateLimitConfigEntry `yaml:"route_rate_limits"`
+type RouteRateLimitConfigOld struct {
+	RouteRateLimits []RouteRateLimitConfigEntry `yaml:"route_rate_limits"`
 }
 
 func (rs *RedisConfStore) GetWhitelist() []net.IPNet {
@@ -357,22 +348,26 @@ func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
 	return nil
 }
 
+func (rs *RedisConfStore) SetJail(jail Jail, url url.URL) error {
+	route := url.EscapedPath()
+	limitCountStr := strconv.FormatUint(jail.Limit.Count, 10)
+	limitDurationStr := jail.Limit.Duration.String()
+	limitEnabledStr := strconv.FormatBool(jail.Limit.Enabled)
+	jailBanDuration := jail.BanDuration.String()
+
+	pipe := rs.redis.TxPipeline()
+	pipe.HSet(redisJailLimitsCountKey, route, limitCountStr)
+	pipe.HSet(redisJailLimitsDurationKey, route, limitDurationStr)
+	pipe.HSet(redisJailLimitsEnabledKey, route, limitEnabledStr)
+	pipe.HSet(redisJailBanDurationKey, route, jailBanDuration)
+	_, err := pipe.Exec()
+	return err
+}
+
 // SetJails configures all of the jails
 func (rs *RedisConfStore) SetJails(jails map[url.URL]Jail) error {
 	for url, jail := range jails {
-		route := url.EscapedPath()
-		limitCountStr := strconv.FormatUint(jail.Limit.Count, 10)
-		limitDurationStr := jail.Limit.Duration.String()
-		limitEnabledStr := strconv.FormatBool(jail.Limit.Enabled)
-		jailBanDuration := jail.BanDuration.String()
-
-		pipe := rs.redis.TxPipeline()
-		pipe.HSet(redisJailLimitsCountKey, route, limitCountStr)
-		pipe.HSet(redisJailLimitsDurationKey, route, limitDurationStr)
-		pipe.HSet(redisJailLimitsEnabledKey, route, limitEnabledStr)
-		pipe.HSet(redisJailBanDurationKey, route, jailBanDuration)
-		_, err := pipe.Exec()
-		if err != nil {
+		if err := rs.SetJail(jail, url); err != nil {
 			return err
 		}
 	}
@@ -448,21 +443,25 @@ func (rs *RedisConfStore) FetchJails() (map[url.URL]Jail, error) {
 	return jails, nil
 }
 
+func (rs *RedisConfStore) SetRouteRateLimit(limit Limit, url url.URL) error {
+	route := url.EscapedPath()
+	limitCountStr := strconv.FormatUint(limit.Count, 10)
+	limitDurationStr := limit.Duration.String()
+	limitEnabledStr := strconv.FormatBool(limit.Enabled)
+
+	pipe := rs.redis.TxPipeline()
+	pipe.HSet(redisRouteRateLimitsCountKey, route, limitCountStr)
+	pipe.HSet(redisRouteRateLimitsDurationKey, route, limitDurationStr)
+	pipe.HSet(redisRouteRateLimitsEnabledKey, route, limitEnabledStr)
+	_, err := pipe.Exec()
+	return err
+}
+
 // SetRouteRateLimits set the limit for each route.
 // If the route limit is already defined in the store, it will be overwritten.
 func (rs *RedisConfStore) SetRouteRateLimits(routeRateLimits map[url.URL]Limit) error {
 	for url, limit := range routeRateLimits {
-		route := url.EscapedPath()
-		limitCountStr := strconv.FormatUint(limit.Count, 10)
-		limitDurationStr := limit.Duration.String()
-		limitEnabledStr := strconv.FormatBool(limit.Enabled)
-
-		pipe := rs.redis.TxPipeline()
-		pipe.HSet(redisRouteRateLimitsCountKey, route, limitCountStr)
-		pipe.HSet(redisRouteRateLimitsDurationKey, route, limitDurationStr)
-		pipe.HSet(redisRouteRateLimitsEnabledKey, route, limitEnabledStr)
-		_, err := pipe.Exec()
-		if err != nil {
+		if err := rs.SetRouteRateLimit(limit, url); err != nil {
 			return err
 		}
 	}

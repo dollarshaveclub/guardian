@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -16,6 +16,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+// TODO: Add get <kind>s and delete commands
 func main() {
 	app := kingpin.New("guardian-cli", "cli interface for controlling guardian")
 	logLevel := app.Flag("log-level", "log level.").Short('l').Default("error").OverrideDefaultFromEnvar("LOG_LEVEL").String()
@@ -44,11 +45,6 @@ func main() {
 	getBlacklistCmd := app.Command("get-blacklist", "Get blacklisted CIDRs")
 
 	// Rate limiting
-	setLimitCmd := app.Command("set-limit", "Sets the IP rate limit")
-	limitCount := setLimitCmd.Arg("count", "limit count").Required().Uint64()
-	limitDuration := setLimitCmd.Arg("duration", "limit duration").Required().Duration()
-	limitEnabled := setLimitCmd.Arg("enabled", "limit enabled").Required().Bool()
-
 	getLimitCmd := app.Command("get-limit", "Gets the IP rate limit")
 
 	// Route rate limitting
@@ -57,11 +53,9 @@ func main() {
 	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route")
 
 	// Jails
+	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
 	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes")
 	removeJailsArgs := removeJailsCmd.Arg("jail-routes", "Comma separated list of jails to remove. Use the name of the route").Required().String()
-	/* TODO: Uncomment once fixed
-	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
-	*/
 	getPrisonersCmd := app.Command("get-prisoners", "List all prisoners")
 	removePrisonersCmd := app.Command("remove-prisoners", "Removes prisoners from")
 	prisoners := removePrisonersCmd.Arg("prisoners", "Comma separated list of ip address to remove").Required().String()
@@ -138,13 +132,6 @@ func main() {
 		for _, cidr := range blacklist {
 			fmt.Println(cidr.String())
 		}
-	case setLimitCmd.FullCommand():
-		limit := guardian.Limit{Count: *limitCount, Duration: *limitDuration, Enabled: *limitEnabled}
-		err := setLimit(redisConfStore, limit)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error setting limit: %v\n", err)
-			os.Exit(1)
-		}
 	case getLimitCmd.FullCommand():
 		limit, err := getLimit(redisConfStore)
 		if err != nil {
@@ -158,13 +145,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
 			os.Exit(1)
 		}
-		config := guardian.RouteRateLimitConfig{}
+		config := guardian.RouteRateLimitConfigOld{}
 		for url, limit := range routeRateLimits {
 			entry := guardian.RouteRateLimitConfigEntry{
 				Route: url.EscapedPath(),
 				Limit: limit,
 			}
-			config.RouteRatelimits = append(config.RouteRatelimits, entry)
+			config.RouteRateLimits = append(config.RouteRateLimits, entry)
 		}
 		configYaml, err := yaml.Marshal(config)
 		if err != nil {
@@ -188,7 +175,6 @@ func main() {
 		if err != nil {
 			fatalerror(err)
 		}
-	/* TODO: Fix this
 	case getJailsCmd.FullCommand():
 		jails, err := getJails(redisConfStore)
 		config := guardian.JailConfigOld{}
@@ -204,7 +190,6 @@ func main() {
 			fatalerror(fmt.Errorf("error marshaling jails yaml: %v", err))
 		}
 		fmt.Println(string(configYaml))
-	*/
 	case removePrisonersCmd.FullCommand():
 		n, err := removePrisoners(redisConfStore, *prisoners)
 		if err != nil {
@@ -223,95 +208,59 @@ func main() {
 		fmt.Println(string(prisonersJson))
 	}
 }
-
-/*
-func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) error {
-	routeRateLimits := make(map[url.URL]guardian.Limit)
-	content, err := ioutil.ReadFile(configFilePath)
-	if err != nil {
-		return fmt.Errorf("error reading config file: %v", err)
-	}
-	config := guardian.RouteRateLimitConfig{}
-	err = yaml.Unmarshal(content, &config)
-	if err != nil {
-		return fmt.Errorf("error unmarshaling yaml: %v", err)
-	}
-	for _, routeRateLimitEntry := range config.RouteRatelimits {
-		configuredURL, err := url.Parse(routeRateLimitEntry.Route)
-		if err != nil {
-			return fmt.Errorf("error parsing route: %v", err)
-		}
-		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
-	}
-	return store.SetRouteRateLimits(routeRateLimits)
-}
-*/
-
 func applyConfig(store *guardian.RedisConfStore, configFilePaths []string, logger logrus.FieldLogger) error {
-	routeRateLimits := make(map[url.URL]guardian.Limit)
-	jails := make(map[url.URL]guardian.Jail)
 	for _, configFilePath := range configFilePaths {
-		content, err := ioutil.ReadFile(configFilePath)
+		file, err := os.Open(configFilePath)
 		if err != nil {
-			return fmt.Errorf("error reading config file: %v", err)
+			return fmt.Errorf("error opening config file: %v", err)
 		}
-		configHeader := guardian.ConfigHeader{}
-		err = yaml.Unmarshal(content, &configHeader)
-		if err != nil {
-			return fmt.Errorf("error unmarshaling yaml: %v", err)
+		defer file.Close()
+		dec := yaml.NewDecoder(file)
+		for {
+			var config struct {
+				guardian.ConfigMetadata `yaml:",inline"`
+				Spec                    interface{} `yaml:"spec"`
+			}
+			err := dec.Decode(&config)
+			if err == io.EOF { // No more YAML documents to read
+				break
+			} else if err != nil {
+				return fmt.Errorf("error decoding yaml: %v", err)
+			}
+			configYaml, err := yaml.Marshal(&config)
+			if err != nil {
+				return fmt.Errorf("error marshaling yaml: %v", err)
+			}
+			switch config.Kind {
+			case guardian.GlobalRateLimitConfigKind:
+				config := guardian.GlobalRateLimitConfig{}
+				if err := yaml.Unmarshal(configYaml, &config); err != nil {
+					return fmt.Errorf("error unmarshaling yaml: %v", err)
+				}
+				applyGlobalRateLimitConfig(store, config)
+			case guardian.RateLimitConfigKind:
+				config := guardian.RateLimitConfig{}
+				if err := yaml.Unmarshal(configYaml, &config); err != nil {
+					return fmt.Errorf("error unmarshaling yaml: %v", err)
+				}
+				applyRateLimitConfig(store, config)
+			case guardian.JailConfigKind:
+				config := guardian.JailConfig{}
+				if err := yaml.Unmarshal(configYaml, &config); err != nil {
+					return fmt.Errorf("error unmarshaling yaml: %v", err)
+				}
+				applyJailConfig(store, config)
+			case guardian.GlobalSettingsConfigKind:
+				config := guardian.GlobalSettingsConfig{}
+				err = yaml.Unmarshal(configYaml, &config)
+				if err != nil {
+					return fmt.Errorf("error unmarshaling yaml: %v", err)
+				}
+				applyGlobalSettingsConfig(store, config)
+			default:
+				return fmt.Errorf("unrecognized config file kind: %v", config.Kind)
+			}
 		}
-		switch configHeader.Kind {
-		case guardian.GlobalRateLimitConfigKind:
-			config := guardian.GlobalRateLimitConfig{}
-			err = yaml.Unmarshal(content, &config)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
-			}
-			err = store.SetLimit(config.Spec.Limit.Limit())
-			if err != nil {
-				return fmt.Errorf("error setting limit: %v", err)
-			}
-		case guardian.RateLimitConfigKind:
-			config := guardian.RateLimitConfig{}
-			err = yaml.Unmarshal(content, &config)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
-			}
-			configuredURL, err := url.Parse(config.Spec.Conditions.Path)
-			if err != nil {
-				return fmt.Errorf("error parsing path: %v", err)
-			}
-			routeRateLimits[*configuredURL] = config.Spec.Limit.Limit()
-		case guardian.JailConfigKind:
-			config := guardian.JailConfig{}
-			err = yaml.Unmarshal(content, &config)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
-			}
-			configuredURL, err := url.Parse(config.Spec.Conditions.Path)
-			if err != nil {
-				return fmt.Errorf("error parsing path: %v", err)
-			}
-			jails[*configuredURL] = guardian.Jail{
-				Limit: config.Spec.Limit.Limit(),
-				BanDuration: config.Spec.BanDuration,
-			}
-		case guardian.GlobalSettingsConfigKind:
-			config := guardian.GlobalSettingsConfig{}
-			err = yaml.Unmarshal(content, &config)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
-			}
-			store.SetReportOnly(config.Spec.ReportOnly)
-		default:
-			return fmt.Errorf("unrecognized config file kind: %v", configHeader.Kind)
-		}
-	}
-	if err := store.SetRouteRateLimits(routeRateLimits); err != nil {
-		return err
-	}
-	if err := store.SetJails(jails); err != nil {
-		return err
 	}
 	return nil
 }
@@ -424,17 +373,42 @@ func convertCIDRStrings(cidrStrings []string) ([]net.IPNet, error) {
 	return cidrs, nil
 }
 
-func setLimit(store *guardian.RedisConfStore, limit guardian.Limit) error {
-	return store.SetLimit(limit)
+func applyGlobalRateLimitConfig(store *guardian.RedisConfStore, config guardian.GlobalRateLimitConfig) error {
+	// TODO: Store metadata
+	return store.SetLimit(config.Spec.Limit)
+}
+
+func applyRateLimitConfig(store *guardian.RedisConfStore, config guardian.RateLimitConfig) error {
+	// TODO: Store metadata
+	configuredURL, err := url.Parse(config.Spec.Conditions.Path)
+	if err != nil {
+		return fmt.Errorf("error parsing path: %v", err)
+	}
+	return store.SetRouteRateLimit(config.Spec.Limit, *configuredURL)
+}
+
+func applyJailConfig(store *guardian.RedisConfStore, config guardian.JailConfig) error {
+	// TODO: Store metadata
+	configuredURL, err := url.Parse(config.Spec.Conditions.Path)
+	if err != nil {
+		return fmt.Errorf("error parsing path: %v", err)
+	}
+	return store.SetJail(config.Spec.Jail, *configuredURL)
+}
+
+func applyGlobalSettingsConfig(store *guardian.RedisConfStore, config guardian.GlobalSettingsConfig) error {
+	// TODO: Store metadata
+	return store.SetReportOnly(config.Spec.ReportOnly)
 }
 
 func getLimit(store *guardian.RedisConfStore) (guardian.Limit, error) {
 	return store.FetchLimit()
 }
 
-func setReportOnly(store *guardian.RedisConfStore, reportOnly bool) error {
+/*func setReportOnly(store *guardian.RedisConfStore, reportOnly bool) error {
 	return store.SetReportOnly(reportOnly)
 }
+*/
 
 func getReportOnly(store *guardian.RedisConfStore) (bool, error) {
 	return store.FetchReportOnly()
@@ -456,7 +430,7 @@ func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error 
 	return store.RemoveRouteRateLimits(urls)
 }
 
-/* TODO: Remove this
+/*
 func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) error {
 	routeRateLimits := make(map[url.URL]guardian.Limit)
 	content, err := ioutil.ReadFile(configFilePath)
@@ -480,7 +454,6 @@ func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) e
 */
 
 /*
-TODO: Remove this
 func setJails(store *guardian.RedisConfStore, configFilePath string) error {
 	jails := make(map[url.URL]guardian.Jail)
 	content, err := ioutil.ReadFile(configFilePath)

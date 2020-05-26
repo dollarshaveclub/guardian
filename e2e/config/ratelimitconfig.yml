@@ -5,11 +5,10 @@ description: "/foo/bar"
 spec:
   limit:
     count: 10
-    duration: 10s
+    duration: 1m
     enabled: true
   conditions:
     path: "/foo/bar"
-  ban_duration: 30s # Keep this duration short as it's used in tests
 ---
 version: "v0"
 kind: RateLimit
@@ -22,4 +21,3 @@ spec:
     enabled: false
   conditions:
     path: "/foo/baz"
-  ban_duration: 30s # Keep this duration short as it's used in tests
