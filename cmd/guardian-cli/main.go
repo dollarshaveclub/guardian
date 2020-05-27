@@ -133,6 +133,7 @@ func main() {
 			fmt.Println(cidr.String())
 		}
 	case getLimitCmd.FullCommand():
+		fmt.Fprintf(os.Stderr, "%s is deprecated: use apply with a GlobalRateLimit config\n", getLimitCmd.FullCommand())
 		limit, err := getLimit(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting limit: %v\n", err)
