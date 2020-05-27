@@ -299,7 +299,7 @@ func TestJails(t *testing.T) {
 func TestSetJailsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
 	config := guardianConfig{
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
 		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
 		jailConfigPathDeprecated:  "./config/jailconfigdeprecated.yml",
 	}
