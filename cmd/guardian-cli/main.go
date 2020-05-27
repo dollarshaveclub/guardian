@@ -133,7 +133,7 @@ func main() {
 			fmt.Println(cidr.String())
 		}
 	case getLimitCmd.FullCommand():
-		fmt.Fprintf(os.Stderr, "%s is deprecated: use apply with a GlobalRateLimit config\n", getLimitCmd.FullCommand())
+		//fmt.Fprintf(os.Stderr, "%s is deprecated: use get GlobalRateLimit\n", getLimitCmd.FullCommand())
 		limit, err := getLimit(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting limit: %v\n", err)
@@ -141,6 +141,7 @@ func main() {
 		}
 		fmt.Printf("%v\n", limit)
 	case getRouteRateLimitsCmd.FullCommand():
+		//fmt.Fprintf(os.Stderr, "%s is deprecated: use get RateLimit\n", getRouteRateLimitsCmd.FullCommand())
 		routeRateLimits, err := getRouteRateLimits(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
@@ -165,6 +166,7 @@ func main() {
 			fatalerror(fmt.Errorf("error remove route rate limits: %v", err))
 		}
 	case getReportOnlyCmd.FullCommand():
+		//fmt.Fprintf(os.Stderr, "%s is deprecated: use get GlobalSettings\n", getReportOnlyCmd.FullCommand())
 		reportOnly, err := getReportOnly(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting report only flag: %v\n", err)
@@ -177,6 +179,7 @@ func main() {
 			fatalerror(err)
 		}
 	case getJailsCmd.FullCommand():
+		//fmt.Fprintf(os.Stderr, "%s is deprecated: use apply with a config of type Jail\n", getJailsCmd.FullCommand())
 		jails, err := getJails(redisConfStore)
 		config := guardian.JailConfigOld{}
 		for u, j := range jails {
