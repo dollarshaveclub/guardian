@@ -118,7 +118,7 @@ func TestRateLimit(t *testing.T) {
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
 		blacklist:                 []string{},
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
 		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
 		rateLimitConfigPath:       "./config/ratelimitconfig.yml",
 	}
@@ -204,8 +204,11 @@ func TestSetRateLimits(t *testing.T) {
 func TestRemoveRouteRateLimits(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/ratelimitconfig.yml"
+
 	config := guardianConfig{
-		rateLimitConfigPath: configFilePath,
+		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		rateLimitConfigPath:       configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	rmCmd := "remove-route-rate-limits"
@@ -233,7 +236,7 @@ func TestJails(t *testing.T) {
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{whitelistedIP + "/32"},
 		blacklist:                 []string{},
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
 		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
 		jailConfigPath:            configFilePath,
 	}
@@ -296,7 +299,7 @@ func TestJails(t *testing.T) {
 	}
 }
 
-/*
+/* TODO: re-enable Set tests if keeping the set-* commands for backwards compatibility
 func TestSetJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
@@ -342,7 +345,9 @@ func TestRemoveJail(t *testing.T) {
 	resetRedis(*redisAddr)
 	configFilePath := "./config/jailconfig.yml"
 	config := guardianConfig{
-		jailConfigPath: configFilePath,
+		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		jailConfigPath:            configFilePath,
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	rmCmd := "remove-jails"
