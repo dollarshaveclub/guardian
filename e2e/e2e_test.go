@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/build"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/go-redis/redis"
 	yaml "gopkg.in/yaml.v2"
@@ -113,7 +115,6 @@ func TestGlobalRateLimit(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/ratelimitconfig.yml"
 
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
@@ -124,7 +125,7 @@ func TestRateLimit(t *testing.T) {
 	}
 	applyGuardianConfig(t, *redisAddr, guardianConfig)
 
-	file, err := os.Open(configFilePath)
+	file, err := os.Open(guardianConfig.rateLimitConfigPath)
 	if err != nil {
 		t.Fatalf("error opening config file: %v", err)
 	}
@@ -158,22 +159,22 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
-/*
-func TestSetRateLimits(t *testing.T) {
+func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/routeratelimitconfig.yml"
 	config := guardianConfig{
-		whitelist:                []string{},
-		blacklist:                []string{},
-		routeRateLimitConfigPath: configFilePath,
+		whitelist:                          []string{},
+		blacklist:                          []string{},
+		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
+		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	getCmd := "get-route-rate-limits"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
-	expectedResStr, err := ioutil.ReadFile(configFilePath)
+	expectedResStr, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
 
-	res := guardian.RateLimitConfig{}
-	expectedRes := guardian.RouteRateLimitConfig{}
+	res := guardian.RouteRateLimitConfigDeprecated{}
+	expectedRes := guardian.RouteRateLimitConfigDeprecated{}
 	err = yaml.Unmarshal([]byte(resStr), &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling result string: %v", err)
@@ -188,10 +189,10 @@ func TestSetRateLimits(t *testing.T) {
 	// the same entries in no particular order.
 	expectedResSet := make(map[string]guardian.Limit)
 	resSet := make(map[string]guardian.Limit)
-	for _, entry := range expectedRes.RouteRatelimits {
+	for _, entry := range expectedRes.RouteRateLimits {
 		expectedResSet[entry.Route] = entry.Limit
 	}
-	for _, entry := range res.RouteRatelimits {
+	for _, entry := range res.RouteRateLimits {
 		resSet[entry.Route] = entry.Limit
 	}
 
@@ -199,16 +200,13 @@ func TestSetRateLimits(t *testing.T) {
 		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
 	}
 }
-*/
 
 func TestRemoveRouteRateLimits(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/ratelimitconfig.yml"
-
 	config := guardianConfig{
-		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
-		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-		rateLimitConfigPath:       configFilePath,
+		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
+		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	rmCmd := "remove-route-rate-limits"
@@ -217,7 +215,7 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 	getCmd := "get-route-rate-limits"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
 
-	res := guardian.RouteRateLimitConfigOld{}
+	res := guardian.RouteRateLimitConfigDeprecated{}
 	err := yaml.Unmarshal([]byte(resStr), &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling result string: %v", err)
@@ -230,7 +228,6 @@ func TestRemoveRouteRateLimits(t *testing.T) {
 
 func TestJails(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/jailconfig.yml"
 	whitelistedIP := "192.168.1.1"
 
 	guardianConfig := guardianConfig{
@@ -238,12 +235,12 @@ func TestJails(t *testing.T) {
 		blacklist:                 []string{},
 		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
 		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-		jailConfigPath:            configFilePath,
+		jailConfigPath:            "./config/jailconfig.yml",
 	}
 
 	applyGuardianConfig(t, *redisAddr, guardianConfig)
 
-	file, err := os.Open(configFilePath)
+	file, err := os.Open(guardianConfig.jailConfigPath)
 	if err != nil {
 		t.Fatalf("error opening config file: %v", err)
 	}
@@ -299,21 +296,20 @@ func TestJails(t *testing.T) {
 	}
 }
 
-/* TODO: re-enable Set tests if keeping the set-* commands for backwards compatibility
-func TestSetJails(t *testing.T) {
+func TestSetJailsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/jailconfig.yml"
 	config := guardianConfig{
-		jailConfigPath: configFilePath,
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		jailConfigPathDeprecated:  "./config/jailconfigdeprecated.yml",
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 
 	getCmd := "get-jails"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
-	expectedResStr, err := ioutil.ReadFile(configFilePath)
-
-	res := guardian.JailConfig{}
-	expectedRes := guardian.JailConfig{}
+	expectedResStr, err := ioutil.ReadFile(config.jailConfigPathDeprecated)
+	res := guardian.JailConfigDeprecated{}
+	expectedRes := guardian.JailConfigDeprecated{}
 	err = yaml.Unmarshal([]byte(resStr), &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling result string: %v", err)
@@ -339,15 +335,14 @@ func TestSetJails(t *testing.T) {
 		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
 	}
 }
-*/
 
 func TestRemoveJail(t *testing.T) {
 	resetRedis(*redisAddr)
-	configFilePath := "./config/jailconfig.yml"
+
 	config := guardianConfig{
 		globalRateLimitConfigPath: "./config/noglobalratelimitconfig.yml",
 		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-		jailConfigPath:            configFilePath,
+		jailConfigPath:            "./config/jailconfig.yml",
 	}
 	applyGuardianConfig(t, *redisAddr, config)
 	rmCmd := "remove-jails"
@@ -356,7 +351,7 @@ func TestRemoveJail(t *testing.T) {
 	getCmd := "get-jails"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
 
-	res := guardian.JailConfigOld{}
+	res := guardian.JailConfigDeprecated{}
 	err := yaml.Unmarshal([]byte(resStr), &res)
 	if err != nil {
 		t.Fatalf("error unmarshaling result string: %v", err)
@@ -397,12 +392,14 @@ func resetRedis(redisAddr string) {
 }
 
 type guardianConfig struct {
-	whitelist                 []string
-	blacklist                 []string
-	globalRateLimitConfigPath string
-	globalSettingsConfigPath  string
-	rateLimitConfigPath       string
-	jailConfigPath            string
+	whitelist                          []string
+	blacklist                          []string
+	globalRateLimitConfigPath          string
+	globalSettingsConfigPath           string
+	rateLimitConfigPath                string
+	jailConfigPath                     string
+	routeRateLimitConfigPathDeprecated string
+	jailConfigPathDeprecated           string
 }
 
 func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
@@ -433,6 +430,14 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 
 	if len(c.jailConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "apply", c.jailConfigPath)
+	}
+
+	if len(c.routeRateLimitConfigPathDeprecated) > 0 {
+		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPathDeprecated)
+	}
+
+	if len(c.jailConfigPathDeprecated) > 0 {
+		runGuardianCLI(t, redisAddr, "set-jails", c.jailConfigPathDeprecated)
 	}
 
 	time.Sleep(2 * time.Second)
@@ -469,7 +474,7 @@ func runGuardianCLI(t *testing.T, redisAddr string, command string, args ...stri
 
 	cmdArgs := append([]string{command, "-r", redisAddr}, args...)
 	c := exec.Command(cliPath, cmdArgs...)
-	output, err := c.CombinedOutput()
+	output, err := c.Output()
 	if err != nil {
 		t.Fatalf("error running guardian-cli: %v %v", err, string(output))
 	}

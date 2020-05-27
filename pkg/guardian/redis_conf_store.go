@@ -164,23 +164,22 @@ type GlobalSettingsConfig struct {
 	Spec           GlobalSettingsSpec `yaml:"spec"`
 }
 
-// TODO: Required for legacy get-* commands. Probably able to clean this up somehow
-type JailConfigEntry struct {
+type JailConfigEntryDeprecated struct {
 	Route string `yaml:"route"`
 	Jail  Jail   `yaml:"jail"`
 }
 
-type JailConfigOld struct {
-	Jails []JailConfigEntry `yaml:"jails"`
+type JailConfigDeprecated struct {
+	Jails []JailConfigEntryDeprecated `yaml:"jails"`
 }
 
-type RouteRateLimitConfigEntry struct {
+type RouteRateLimitConfigEntryDeprecated struct {
 	Route string `yaml:"route"`
 	Limit Limit  `yaml:"limit"`
 }
 
-type RouteRateLimitConfigOld struct {
-	RouteRateLimits []RouteRateLimitConfigEntry `yaml:"route_rate_limits"`
+type RouteRateLimitConfigDeprecated struct {
+	RouteRateLimits []RouteRateLimitConfigEntryDeprecated `yaml:"route_rate_limits"`
 }
 
 func (rs *RedisConfStore) GetWhitelist() []net.IPNet {
