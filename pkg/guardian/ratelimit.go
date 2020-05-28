@@ -34,6 +34,9 @@ type Counter interface {
 
 	// Incr increments key by count and sets the expiration proportional to the limit.Duration
 	Incr(context context.Context, key string, incrBy uint, limit Limit) (uint64, error)
+
+	// Run prunes the cache on a regular interval
+	Run(dur time.Duration, stop <-chan struct{})
 }
 
 type RateLimitHook func(req Request, limit Limit, rateLimited bool, dur time.Duration, err error)

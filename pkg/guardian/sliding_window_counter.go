@@ -13,9 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// TODO (mk): The counters should know how to slot the keys. this way, they know how to look at previous buckets.
-// That is all, have a great rest of your day :)
-
 const slidingWindowNamespace = "sliding_window_counter"
 
 func NewSlidingWindowCounter(redis *redis.Client, synchronous bool, logger logrus.FieldLogger, reporter MetricReporter) *SlidingWindowCounter {
@@ -43,6 +40,9 @@ type slidingWindowCache struct {
 	m map[string]window
 }
 
+// SlidingWindowCounter maintains a current window and the previous window within its cache in order to simulate a sliding window algorithm.
+// It assumes a constant rate of requests during the previous window in order to simplify the approach
+// https://blog.cloudflare.com/counting-things-a-lot-of-different-things/
 type SlidingWindowCounter struct {
 	redis       *redis.Client
 	synchronous bool

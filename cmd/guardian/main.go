@@ -45,6 +45,7 @@ func main() {
 	synchronous := kingpin.Flag("synchronous", "synchronously enforce ratelimit").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SYNCHRONOUS").Bool()
 	initConfig := kingpin.Flag("init", "create missing configuration on startup if needed").Default("false").Envar("GUARDIAN_FLAG_INIT_CONFIG").Bool()
 	prisonerCacheMaxSize := kingpin.Flag("prisoner-cache-max-size", "max size of the cache of prisoner that each Guardian instance maintains").Default("1000").Envar("GUARDIAN_FLAG_PRISONER_CACHE_MAX_SIZE").Uint16()
+	slidingWindowCounterFeature := kingpin.Flag("sliding-window-counter", "enable the sliding window counter feature").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SLIDING_WINDOW_FEATURE").Bool()
 
 	kingpin.Parse()
 
@@ -111,18 +112,22 @@ func main() {
 		redisConfStore.RunSync(*confUpdateInterval, stop)
 	}()
 
-	redisCounter := guardian.NewFixedWindowCounter(redis, *synchronous, logger.WithField("context", "redis-counter"), reporter)
+	var counter guardian.Counter
+	counter = guardian.NewFixedWindowCounter(redis, *synchronous, logger.WithField("context", "fixed-window-counter"), reporter)
+	if *slidingWindowCounterFeature {
+		counter = guardian.NewSlidingWindowCounter(redis, *synchronous, logger.WithField("context", "sliding-window-counter"), reporter)
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		redisCounter.Run(30*time.Second, stop)
+		counter.Run(30*time.Second, stop)
 	}()
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)
-	jailer := guardian.NewGenericJailer(redisConfStore, logger.WithField("context", "route-jailer"), redisCounter, redisConfStore, reporter)
-	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, redisCounter)
-	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, redisCounter)
+	jailer := guardian.NewGenericJailer(redisConfStore, logger.WithField("context", "route-jailer"), counter, redisConfStore, reporter)
+	ipRateLimiter := guardian.NewIPRateLimiter(redisConfStore, logger.WithField("context", "ip-rate-limiter"), reporter, counter)
+	routeRateLimiter := guardian.NewRouteRateLimiter(redisConfStore, logger.WithField("context", "route-rate-limiter"), reporter, counter)
 	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, jailer, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)
