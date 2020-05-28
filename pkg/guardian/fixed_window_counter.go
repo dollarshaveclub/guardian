@@ -38,6 +38,7 @@ type FixedWindowCounter struct {
 	cache       *lockingExpiringMap
 }
 
+// Run maintains the counter's cache by pruning expired windows.
 func (fwc *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan struct{}) {
 	ticker := time.NewTicker(pruneInterval)
 	for {
@@ -51,8 +52,9 @@ func (fwc *FixedWindowCounter) Run(pruneInterval time.Duration, stop <-chan stru
 	}
 }
 
+// Incr increments the internal counter and persists to Redis.It supports both synchronous and asynchronous counting.
 func (fwc *FixedWindowCounter) Incr(context context.Context, keyBase string, incrBy uint, limit Limit) (uint64, error) {
-	key := fwc.windowKey(keyBase, time.Now(), limit.Duration)
+	key := fwc.windowKey(keyBase, time.Now().UTC(), limit.Duration)
 	runIncrFunc := func() (item, error) {
 		count, err := fwc.doIncr(context, key, incrBy, limit.Duration)
 		if err != nil {
