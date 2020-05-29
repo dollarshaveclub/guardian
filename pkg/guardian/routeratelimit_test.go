@@ -15,7 +15,7 @@ func TestRouteLimitProvider(t *testing.T) {
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
 
-	cs.SetRouteRateLimits(routeLimits)
+	cs.SetRouteRateLimitsDeprecated(routeLimits)
 	cs.UpdateCachedConf()
 
 	tests := []struct {
@@ -58,7 +58,7 @@ func TestRouteLimitProviderUpdates(t *testing.T) {
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
 
-	cs.SetRouteRateLimits(routeLimits)
+	cs.SetRouteRateLimitsDeprecated(routeLimits)
 	cs.UpdateCachedConf()
 
 	rlp := NewRouteRateLimitProvider(cs, TestingLogger)
@@ -70,7 +70,7 @@ func TestRouteLimitProviderUpdates(t *testing.T) {
 	fooBarRouteLimit = Limit{Count: 43, Duration: time.Minute, Enabled: true}
 
 	newRouteLimits := map[url.URL]Limit{route: fooBarRouteLimit}
-	cs.SetRouteRateLimits(newRouteLimits)
+	cs.SetRouteRateLimitsDeprecated(newRouteLimits)
 	cs.UpdateCachedConf()
 
 	gotLimit = rlp.GetLimit(Request{Path: "/foo/bar"})
