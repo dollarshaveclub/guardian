@@ -99,8 +99,6 @@ func main() {
 	}
 	logger.SetLevel(level)
 
-	fmt.Println(redisConfStore.GetLimit())
-
 	switch selectedCmd {
 	case applyCmd.FullCommand():
 		err := applyConfig(redisConfStore, *applyConfigFilePaths, logger)
