@@ -110,19 +110,19 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetLimit(expectedLimit); err != nil {
+	if err := c.SetLimitDeprecated(expectedLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetReportOnly(expectedReportOnly); err != nil {
+	if err := c.SetReportOnlyDeprecated(expectedReportOnly); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetRouteRateLimits(expectedRouteRateLimits); err != nil {
+	if err := c.SetRouteRateLimitsDeprecated(expectedRouteRateLimits); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetJails(expectedJails); err != nil {
+	if err := c.SetJailsDeprecated(expectedJails); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
@@ -136,22 +136,22 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotLimit, err := c.FetchLimit()
+	gotLimit, err := c.FetchLimitDeprecated()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotReportOnly, err := c.FetchReportOnly()
+	gotReportOnly, err := c.FetchReportOnlyDeprecated()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotRouteRateLimits, err := c.FetchRouteRateLimits()
+	gotRouteRateLimits, err := c.FetchRouteRateLimitsDeprecated()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotJails, err := c.FetchJails()
+	gotJails, err := c.FetchJailsDeprecated()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -198,11 +198,11 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetLimit(expectedLimit); err != nil {
+	if err := c.SetLimitDeprecated(expectedLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetReportOnly(expectedReportOnly); err != nil {
+	if err := c.SetReportOnlyDeprecated(expectedReportOnly); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 

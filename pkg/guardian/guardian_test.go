@@ -126,8 +126,8 @@ func TestBasicFunctionality(t *testing.T) {
 
 	redisConfStore.AddWhitelistCidrs([]net.IPNet{ipStringToIPNet(t, whitelistedIP)})
 	redisConfStore.AddBlacklistCidrs([]net.IPNet{ipStringToIPNet(t, blacklistedIP)})
-	redisConfStore.SetLimit(Limit{Count: 5, Duration: time.Minute, Enabled: true})
-	redisConfStore.SetReportOnly(false)
+	redisConfStore.SetLimitDeprecated(Limit{Count: 5, Duration: time.Minute, Enabled: true})
+	redisConfStore.SetReportOnlyDeprecated(false)
 
 	time.Sleep(2 * time.Second) // let conf changes take effect
 
