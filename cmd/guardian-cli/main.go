@@ -24,12 +24,17 @@ func main() {
 	redisAddress := app.Flag("redis-address", "host:port.").Short('r').OverrideDefaultFromEnvar("REDIS_ADDRESS").Required().String()
 
 	// Configuration
-	applyCmd := app.Command("apply", "Apply configuration values from a YAML file")
+	applyCmd := app.Command("apply", "Apply configuration resources from a YAML file")
 	applyConfigFilePaths := applyCmd.Arg("config-file", "Path to configuration file").Required().Strings()
 
-	// Getting values
-	getCmd := app.Command("get", "Get configuration data of a certain kind")
-	getConfigKind := getCmd.Arg("kind", "kind of configuration (GlobalRateLimit, RateLimit, Jail, or GlobalSettings)").Required().String()
+	// Getting configuration data
+	getCmd := app.Command("get", "Get configuration resources of a certain kind")
+	getConfigKind := getCmd.Arg("kind", "kind of resource").Required().String()
+
+	// Removing configuration data
+	deleteCmd := app.Command("delete", "Delete configuration resources")
+	deleteConfigKind := deleteCmd.Arg("kind", "kind of resource").Required().String()
+	deleteConfigName := deleteCmd.Arg("name", "name of resource").Required().String()
 
 	// Whitelisting
 	addWhitelistCmd := app.Command("add-whitelist", "Add CIDRs to the IP Whitelist")
@@ -95,6 +100,8 @@ func main() {
 	}
 	logger.SetLevel(level)
 
+	fmt.Println(redisConfStore.GetLimit())
+
 	switch selectedCmd {
 	case applyCmd.FullCommand():
 		err := applyConfig(redisConfStore, *applyConfigFilePaths, logger)
@@ -106,6 +113,12 @@ func main() {
 		err := getConfig(redisConfStore, *getConfigKind, logger)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting configuration: %v\n", err)
+			os.Exit(1)
+		}
+	case deleteCmd.FullCommand():
+		err := deleteConfig(redisConfStore, *deleteConfigKind, *deleteConfigName, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error deleting configuration: %v\n", err)
 			os.Exit(1)
 		}
 	case addWhitelistCmd.FullCommand():
@@ -252,7 +265,7 @@ func main() {
 	case getPrisonersCmd.FullCommand():
 		prisoners, err := getPrisoners(redisConfStore)
 		if err != nil {
-			fatalerror(fmt.Errorf("error fetching prisoners: %v"))
+			fatalerror(fmt.Errorf("error fetching prisoners: %v", err))
 		}
 		prisonersJson, err := yaml.Marshal(prisoners)
 		if err != nil {
@@ -265,7 +278,6 @@ func main() {
 func applyConfig(store *guardian.RedisConfStore, configFilePaths []string, logger logrus.FieldLogger) error {
 	for _, configFilePath := range configFilePaths {
 		file, err := os.Open(configFilePath)
-		fmt.Println(configFilePath)
 		if err != nil {
 			return fmt.Errorf("error opening config file: %v", err)
 		}
@@ -329,53 +341,65 @@ func applyConfig(store *guardian.RedisConfStore, configFilePaths []string, logge
 }
 
 func getConfig(store *guardian.RedisConfStore, configKind string, logger logrus.FieldLogger) error {
-	// TODO: Return YAML instead of replicating old return style
 	switch configKind {
 	case guardian.GlobalRateLimitConfigKind:
-		limit, err := getLimit(store)
+		config, err := store.FetchGlobalRateLimitConfig()
 		if err != nil {
-			return fmt.Errorf("error getting limit: %v", err)
-		}
-		fmt.Printf("%v\n", limit)
-	case guardian.RateLimitConfigKind:
-		routeRateLimits, err := getRouteRateLimits(store)
-		if err != nil {
-			return fmt.Errorf("error getting route rate limits: %v", err)
-		}
-		config := guardian.RouteRateLimitConfigDeprecated{}
-		for url, limit := range routeRateLimits {
-			entry := guardian.RouteRateLimitConfigEntryDeprecated{
-				Route: url.EscapedPath(),
-				Limit: limit,
-			}
-			config.RouteRateLimits = append(config.RouteRateLimits, entry)
+			return fmt.Errorf("error getting global rate limit config: %v", err)
 		}
 		configYaml, err := yaml.Marshal(config)
 		if err != nil {
-			return fmt.Errorf("error marshaling route limit yaml: %v", err)
-		}
-		fmt.Println(string(configYaml))
-	case guardian.JailConfigKind:
-		jails, err := getJails(store)
-		config := guardian.JailConfigDeprecated{}
-		for u, j := range jails {
-			entry := guardian.JailConfigEntryDeprecated{
-				Route: u.EscapedPath(),
-				Jail:  j,
-			}
-			config.Jails = append(config.Jails, entry)
-		}
-		configYaml, err := yaml.Marshal(config)
-		if err != nil {
-			return fmt.Errorf("error marshaling jails yaml: %v", err)
+			return fmt.Errorf("error marshaling yaml: %v", err)
 		}
 		fmt.Println(string(configYaml))
 	case guardian.GlobalSettingsConfigKind:
-		reportOnly, err := getReportOnly(store)
+		config, err := store.FetchGlobalSettingsConfig()
 		if err != nil {
-			return err
+			return fmt.Errorf("error getting global settings config: %v", err)
 		}
-		fmt.Println(reportOnly)
+		configYaml, err := yaml.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("error marshaling yaml: %v", err)
+		}
+		fmt.Println(string(configYaml))
+	case guardian.RateLimitConfigKind:
+		configs := store.FetchRateLimitConfigs()
+		for _, config := range configs {
+			configYaml, err := yaml.Marshal(config)
+			if err != nil {
+				return fmt.Errorf("error marshaling yaml: %v", err)
+			}
+			fmt.Println(string(configYaml))
+			fmt.Println("---")
+		}
+	case guardian.JailConfigKind:
+		configs := store.FetchJailConfigs()
+		for _, config := range configs {
+			configYaml, err := yaml.Marshal(config)
+			if err != nil {
+				return fmt.Errorf("error marshaling yaml: %v", err)
+			}
+			fmt.Println(string(configYaml))
+			fmt.Println("---")
+		}
+	}
+	return nil
+}
+
+func deleteConfig(store *guardian.RedisConfStore, configKind string, configName string, logger logrus.FieldLogger) error {
+	switch configKind {
+	case guardian.RateLimitConfigKind:
+		err := store.DeleteRateLimitConfig(configName)
+		if err != nil {
+			return fmt.Errorf("error deleting rate limit config: %v", err)
+		}
+	case guardian.JailConfigKind:
+		err := store.DeleteJailConfig(configName)
+		if err != nil {
+			return fmt.Errorf("error deleting jail config: %v", err)
+		}
+	default:
+		return fmt.Errorf("config kind %v does not support deletion", configKind)
 	}
 	return nil
 }
@@ -489,51 +513,39 @@ func convertCIDRStrings(cidrStrings []string) ([]net.IPNet, error) {
 }
 
 func applyGlobalRateLimitConfig(store *guardian.RedisConfStore, config guardian.GlobalRateLimitConfig) error {
-	// TODO: Store metadata
-	return store.SetLimit(config.Spec.Limit)
-}
-
-func applyRateLimitConfig(store *guardian.RedisConfStore, config guardian.RateLimitConfig) error {
-	// TODO: Store metadata
-	configuredURL, err := url.Parse(config.Spec.Conditions.Path)
-	if err != nil {
-		return fmt.Errorf("error parsing path: %v", err)
-	}
-	return store.SetRouteRateLimit(config.Spec.Limit, *configuredURL)
-}
-
-func applyJailConfig(store *guardian.RedisConfStore, config guardian.JailConfig) error {
-	// TODO: Store metadata
-	configuredURL, err := url.Parse(config.Spec.Conditions.Path)
-	if err != nil {
-		return fmt.Errorf("error parsing path: %v", err)
-	}
-	return store.SetJail(config.Spec.Jail, *configuredURL)
+	return store.ApplyGlobalRateLimitConfig(config)
 }
 
 func applyGlobalSettingsConfig(store *guardian.RedisConfStore, config guardian.GlobalSettingsConfig) error {
-	// TODO: Store metadata
-	return store.SetReportOnly(config.Spec.ReportOnly)
+	return store.ApplyGlobalSettingsConfig(config)
+}
+
+func applyRateLimitConfig(store *guardian.RedisConfStore, config guardian.RateLimitConfig) error {
+	return store.ApplyRateLimitConfig(config)
+}
+
+func applyJailConfig(store *guardian.RedisConfStore, config guardian.JailConfig) error {
+	return store.ApplyJailConfig(config)
 }
 
 func setLimit(store *guardian.RedisConfStore, limit guardian.Limit) error {
-	return store.SetLimit(limit)
+	return store.SetLimitDeprecated(limit)
 }
 
 func getLimit(store *guardian.RedisConfStore) (guardian.Limit, error) {
-	return store.FetchLimit()
+	return store.FetchLimitDeprecated()
 }
 
 func setReportOnly(store *guardian.RedisConfStore, reportOnly bool) error {
-	return store.SetReportOnly(reportOnly)
+	return store.SetReportOnlyDeprecated(reportOnly)
 }
 
 func getReportOnly(store *guardian.RedisConfStore) (bool, error) {
-	return store.FetchReportOnly()
+	return store.FetchReportOnlyDeprecated()
 }
 
 func getRouteRateLimits(store *guardian.RedisConfStore) (map[url.URL]guardian.Limit, error) {
-	return store.FetchRouteRateLimits()
+	return store.FetchRouteRateLimitsDeprecated()
 }
 
 func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error {
@@ -545,7 +557,7 @@ func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error 
 		}
 		urls = append(urls, *unwantedURL)
 	}
-	return store.RemoveRouteRateLimits(urls)
+	return store.RemoveRouteRateLimitsDeprecated(urls)
 }
 
 func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) error {
@@ -566,7 +578,7 @@ func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) e
 		}
 		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
 	}
-	return store.SetRouteRateLimits(routeRateLimits)
+	return store.SetRouteRateLimitsDeprecated(routeRateLimits)
 }
 
 func setJails(store *guardian.RedisConfStore, configFilePath string) error {
@@ -587,7 +599,7 @@ func setJails(store *guardian.RedisConfStore, configFilePath string) error {
 		}
 		jails[*configuredURL] = jailEntry.Jail
 	}
-	return store.SetJails(jails)
+	return store.SetJailsDeprecated(jails)
 }
 
 func removeJails(store *guardian.RedisConfStore, routes string) error {
@@ -599,11 +611,11 @@ func removeJails(store *guardian.RedisConfStore, routes string) error {
 		}
 		urls = append(urls, *unwantedURL)
 	}
-	return store.RemoveJails(urls)
+	return store.RemoveJailsDeprecated(urls)
 }
 
 func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
-	return store.FetchJails()
+	return store.FetchJailsDeprecated()
 }
 
 func getPrisoners(store *guardian.RedisConfStore) ([]guardian.Prisoner, error) {
