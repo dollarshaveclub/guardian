@@ -17,7 +17,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// TODO: Add delete command
 func main() {
 	app := kingpin.New("guardian-cli", "cli interface for controlling guardian")
 	logLevel := app.Flag("log-level", "log level.").Short('l').Default("error").OverrideDefaultFromEnvar("LOG_LEVEL").String()
