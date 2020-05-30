@@ -16,20 +16,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Config file format versions
+const (
+	GlobalRateLimitConfigVersion = "v0"
+	GlobalSettingsConfigVersion  = "v0"
+	RateLimitConfigVersion       = "v0"
+	JailConfigVersion            = "v0"
+)
+
 // Redis keys
 const (
-	redisIPWhitelistKey                  = "guardian_conf:whitelist"
-	redisIPBlacklistKey                  = "guardian_conf:blacklist"
-	redisPrisonersKey                    = "guardian_conf:prisoners"
-	redisPrisonersLockKey                = "guardian_conf:prisoners_lock"
-	redisGlobalRateLimitConfigVersionKey = "v0"
-	redisGlobalRateLimitConfigKey        = "guardian_conf:global_rate_limit"
-	redisGlobalSettingsConfigVersionKey  = "v0"
-	redisGlobalSettingsConfigKey         = "guardian_conf:global_settings"
-	redisRateLimitsConfigVersionKey      = "v0"
-	redisRateLimitsConfigKey             = "guardian_conf:rate_limits"
-	redisJailsConfigVersionKey           = "v0"
-	redisJailsConfigKey                  = "guardian_conf:jails"
+	redisIPWhitelistKey           = "guardian_conf:whitelist"
+	redisIPBlacklistKey           = "guardian_conf:blacklist"
+	redisPrisonersKey             = "guardian_conf:prisoners"
+	redisPrisonersLockKey         = "guardian_conf:prisoners_lock"
+	redisGlobalRateLimitConfigKey = "guardian_conf:global_rate_limit"
+	redisGlobalSettingsConfigKey  = "guardian_conf:global_settings"
+	redisRateLimitsConfigKey      = "guardian_conf:rate_limits"
+	redisJailsConfigKey           = "guardian_conf:jails"
 
 	// The remaining keys are associated with the deprecated CLI config.
 
@@ -71,18 +75,49 @@ func NewRedisConfStore(redis *redis.Client, defaultWhitelist []net.IPNet, defaul
 	}
 
 	defaultConf := conf{
-		whitelist:       defaultWhitelist,
-		blacklist:       defaultBlacklist,
-		limit:           defaultLimit,
-		reportOnly:      defaultReportOnly,
-		routeRateLimits: make(map[url.URL]Limit),
-		jails:           make(map[url.URL]Jail),
+		whitelist: defaultWhitelist,
+		blacklist: defaultBlacklist,
+		globalRateLimit: GlobalRateLimitConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version:     GlobalRateLimitConfigVersion,
+				Kind:        GlobalRateLimitConfigKind,
+				Name:        GlobalRateLimitConfigKind,
+				Description: "",
+			},
+			Spec: GlobalRateLimitSpec{
+				Limit: defaultLimit,
+			},
+		},
+		globalSettings: GlobalSettingsConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version:     GlobalSettingsConfigVersion,
+				Kind:        GlobalSettingsConfigKind,
+				Name:        GlobalSettingsConfigKind,
+				Description: "",
+			},
+			Spec: GlobalSettingsSpec{
+				ReportOnly: defaultReportOnly,
+			},
+		},
+		rateLimitsByName: make(map[string]RateLimitConfig),
+		rateLimitsByURL:  make(map[url.URL]RateLimitConfig),
+		jailsByName:      make(map[string]JailConfig),
+		jailsByURL:       make(map[url.URL]JailConfig),
 		// There are a couple limitations in redis that require us to need to keep track of prisoners and manage when they should expire.
 		// 1. Redis Hashmaps and Sets to not support setting TTL of individual keys
 		// 2. We could just rely upon unique keys in the global keyspace and do prefix lookups with the KEYS function, however, these lookups would be O(N).
 		//    N in this case is every single entry within the database. This is not a valid option considering we could have millions of keys and do not want to
 		//    block redis for too long.
 		prisoners: prisoners,
+		// Fields associated with deprecated CLI
+		limit:                       defaultLimit,
+		useDeprecatedLimit:          false,
+		reportOnly:                  defaultReportOnly,
+		useDeprecatedReportOnly:     false,
+		routeRateLimits:             make(map[url.URL]Limit),
+		useDeprecatedRouteRateLimit: make(map[url.URL]bool),
+		useDeprecatedJail:           make(map[url.URL]bool),
+		jails:                       make(map[url.URL]Jail),
 	}
 
 	rcf := &RedisConfStore{redis: redis, logger: logger, conf: &lockingConf{conf: defaultConf}, reporter: mr, locker: locker}
@@ -114,10 +149,14 @@ type conf struct {
 	jailsByName      map[string]JailConfig
 	jailsByURL       map[url.URL]JailConfig
 	// Fields associated with deprecated CLI
-	limit           Limit
-	reportOnly      bool
-	routeRateLimits map[url.URL]Limit
-	jails           map[url.URL]Jail
+	limit                       Limit
+	useDeprecatedLimit          bool
+	reportOnly                  bool
+	useDeprecatedReportOnly     bool
+	routeRateLimits             map[url.URL]Limit
+	useDeprecatedRouteRateLimit map[url.URL]bool
+	jails                       map[url.URL]Jail
+	useDeprecatedJail           map[url.URL]bool
 }
 
 type lockingConf struct {
@@ -144,66 +183,66 @@ const (
 // Every configuration resource begins with this metadata.
 type ConfigMetadata struct {
 	// Version identifies the version of the configuration resource format
-	Version string `yaml:"version"`
+	Version string `yaml:"version" json:"version"`
 	// Kind identifies the kind of the configuration resource
-	Kind ConfigKind `yaml:"kind"`
+	Kind ConfigKind `yaml:"kind" json:"kind"`
 	// Name uniquely identifies a configuration resource within the resource's Kind
-	Name string `yaml:"name"`
+	Name string `yaml:"name" json:"name"`
 	// Description is a description to add context to a resource
-	Description string `yaml:"description"`
+	Description string `yaml:"description" json:"description"`
 }
 
 // Conditions represents conditions required for a Limit to be applied to
 // a Request. Currently, Guardian only filters requests based on URL path,
 // via RedisConfStore.GetRouteRateLimit(url.URL) or .GetJail(url.URL)
 type Conditions struct {
-	Path string `yaml:"path"`
+	Path string `yaml:"path" json:"path"`
 }
 
 // GlobalRateLimitSpec represents the specification for a GlobalRateLimitConfig
 type GlobalRateLimitSpec struct {
-	Limit Limit `yaml:"limit"`
+	Limit Limit `yaml:"limit" json:"limit"`
 }
 
 // GlobalSettingsSpec represents the specification for a GlobalSettingsConfig
 type GlobalSettingsSpec struct {
-	ReportOnly bool `yaml:"reportOnly"`
+	ReportOnly bool `yaml:"reportOnly" json:"reportOnly"`
 }
 
 // RateLimitSpec represents the specification for a RateLimitConfig
 type RateLimitSpec struct {
-	Limit      Limit      `yaml:"limit"`
-	Conditions Conditions `yaml:"conditions"`
+	Limit      Limit      `yaml:"limit" json:"limit"`
+	Conditions Conditions `yaml:"conditions" json:"conditions"`
 }
 
 // JailSpec represents the specification for a JailConfig
 type JailSpec struct {
-	Jail       `yaml:",inline"`
-	Conditions Conditions `yaml:"conditions"`
+	Jail       `yaml:",inline" json:",inline"`
+	Conditions Conditions `yaml:"conditions" json:"conditions"`
 }
 
 // GlobalRateLimitConfig represents a resource that configures the global rate limit
 type GlobalRateLimitConfig struct {
-	ConfigMetadata `yaml:",inline"`
-	Spec           GlobalRateLimitSpec `yaml:"spec"`
+	ConfigMetadata `yaml:",inline" json:",inline"`
+	Spec           GlobalRateLimitSpec `yaml:"spec" json:"spec"`
 }
 
 // RateLimitConfig represents a resource that configures a conditional rate limit
 type RateLimitConfig struct {
-	ConfigMetadata `yaml:",inline"`
-	Spec           RateLimitSpec `yaml:"spec"`
+	ConfigMetadata `yaml:",inline" json:",inline"`
+	Spec           RateLimitSpec `yaml:"spec" json:"spec"`
 }
 
 // JailConfig represents a resource that configures a jail
 type JailConfig struct {
-	ConfigMetadata `yaml:",inline"`
-	Spec           JailSpec `yaml:"spec"`
+	ConfigMetadata `yaml:",inline" json:",inline"`
+	Spec           JailSpec `yaml:"spec" json:"spec"`
 }
 
 // GlobalSettingsConfig represents a resource that configures global settings
 type GlobalSettingsConfig struct {
-	ConfigMetadata `yaml:",inline"`
-	Spec           GlobalSettingsSpec `yaml:"spec"`
+	ConfigMetadata `yaml:",inline" json:",inline"`
+	Spec           GlobalSettingsSpec `yaml:"spec" json:"spec"`
 }
 
 // JailConfigEntryDeprecated represents an entry in the jail configuration format
@@ -402,7 +441,16 @@ func (rs *RedisConfStore) ApplyJailConfig(config JailConfig) error {
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	return rs.redis.HSet(redisJailsConfigKey, config.Name, string(configBytes)).Err()
+	url, err := url.Parse(config.Spec.Conditions.Path)
+	if err != nil {
+		return fmt.Errorf("error parsing path: %v", err)
+	}
+	err = rs.redis.HSet(redisJailsConfigKey, config.Name, string(configBytes)).Err()
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedJail[*url] = false
+	return nil
 }
 
 func (rs *RedisConfStore) SetJailsDeprecated(jails map[url.URL]Jail) error {
@@ -422,6 +470,7 @@ func (rs *RedisConfStore) SetJailsDeprecated(jails map[url.URL]Jail) error {
 		if err != nil {
 			return err
 		}
+		rs.conf.useDeprecatedJail[url] = true
 	}
 	return nil
 }
@@ -455,12 +504,10 @@ func (rs *RedisConfStore) RemoveJailsDeprecated(urls []url.URL) error {
 func (rs *RedisConfStore) GetJail(url url.URL) Jail {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
-	config, ok := rs.conf.jailsByURL[url]
-	if !ok {
-		// Fall back to deprecated jail
+	if rs.conf.useDeprecatedJail[url] {
 		return rs.conf.jails[url]
 	}
-	return config.Spec.Jail
+	return rs.conf.jailsByURL[url].Spec.Jail
 }
 
 func (rs *RedisConfStore) FetchJailConfigs() []JailConfig {
@@ -518,13 +565,23 @@ func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	return rs.redis.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes)).Err()
+	url, err := url.Parse(config.Spec.Conditions.Path)
+	if err != nil {
+		return fmt.Errorf("error parsing path: %v", err)
+	}
+	err = rs.redis.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes)).Err()
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedRouteRateLimit[*url] = false
+	return nil
 }
 
 // SetRouteRateLimitsDeprecated set the limit for each route.
 // If the route limit is already defined in the store, it will be overwritten.
 func (rs *RedisConfStore) SetRouteRateLimitsDeprecated(routeRateLimits map[url.URL]Limit) error {
 	for url, limit := range routeRateLimits {
+		rs.conf.useDeprecatedRouteRateLimit[url] = true
 		route := url.EscapedPath()
 		limitCountStr := strconv.FormatUint(limit.Count, 10)
 		limitDurationStr := limit.Duration.String()
@@ -573,12 +630,10 @@ func (rs *RedisConfStore) RemoveRouteRateLimitsDeprecated(urls []url.URL) error 
 func (rs *RedisConfStore) GetRouteRateLimit(url url.URL) Limit {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
-	config, ok := rs.conf.rateLimitsByURL[url]
-	if !ok {
-		// Fall back to deprecated rate limit
+	if rs.conf.useDeprecatedRouteRateLimit[url] {
 		return rs.conf.routeRateLimits[url]
 	}
-	return config.Spec.Limit
+	return rs.conf.rateLimitsByURL[url].Spec.Limit
 }
 
 func (rs *RedisConfStore) FetchRateLimitConfigs() []RateLimitConfig {
@@ -626,18 +681,21 @@ func (rs *RedisConfStore) ApplyGlobalRateLimitConfig(config GlobalRateLimitConfi
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	return rs.redis.Set(redisGlobalRateLimitConfigKey, string(configBytes), 0).Err()
+	err = rs.redis.Set(redisGlobalRateLimitConfigKey, string(configBytes), 0).Err()
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedLimit = false
+	return nil
 }
 
 func (rs *RedisConfStore) GetLimit() Limit {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
-	config := rs.conf.globalRateLimit
-	if config.Version == "" {
-		// Fall back to deprecated limit
+	if rs.conf.useDeprecatedLimit {
 		return rs.conf.limit
 	}
-	return config.Spec.Limit
+	return rs.conf.globalRateLimit.Spec.Limit
 }
 
 func (rs *RedisConfStore) FetchGlobalRateLimitConfig() (GlobalRateLimitConfig, error) {
@@ -668,8 +726,11 @@ func (rs *RedisConfStore) SetLimitDeprecated(limit Limit) error {
 	pipe.Set(redisLimitEnabledKey, limitEnabledStr, 0)
 
 	_, err := pipe.Exec()
-
-	return err
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedLimit = true
+	return nil
 }
 
 func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig) error {
@@ -677,16 +738,22 @@ func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	return rs.redis.Set(redisGlobalSettingsConfigKey, string(configBytes), 0).Err()
+	err = rs.redis.Set(redisGlobalSettingsConfigKey, string(configBytes), 0).Err()
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedReportOnly = false
+	return nil
 }
 
 func (rs *RedisConfStore) GetReportOnly() bool {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
-	if rs.conf.globalSettings.Version == "" {
+	if rs.conf.useDeprecatedReportOnly {
 		return rs.conf.reportOnly
+	} else {
+		return rs.conf.globalSettings.Spec.ReportOnly
 	}
-	return rs.conf.globalSettings.Spec.ReportOnly
 }
 
 func (rs *RedisConfStore) FetchGlobalSettingsConfig() (GlobalSettingsConfig, error) {
@@ -708,7 +775,12 @@ func (rs *RedisConfStore) FetchReportOnlyDeprecated() (bool, error) {
 
 func (rs *RedisConfStore) SetReportOnlyDeprecated(reportOnly bool) error {
 	reportOnlyStr := strconv.FormatBool(reportOnly)
-	return rs.redis.Set(redisReportOnlyKey, reportOnlyStr, 0).Err()
+	err := rs.redis.Set(redisReportOnlyKey, reportOnlyStr, 0).Err()
+	if err != nil {
+		return err
+	}
+	rs.conf.useDeprecatedReportOnly = true
+	return nil
 }
 
 func (rs *RedisConfStore) RunSync(updateInterval time.Duration, stop <-chan struct{}) {
@@ -745,7 +817,7 @@ func (rs *RedisConfStore) init() error {
 	}
 
 	if rs.redis.Get(redisGlobalRateLimitConfigKey).Err() == redis.Nil {
-		if err := rs.ApplyGlobalSettingsConfig(rs.conf.globalSettings); err != nil {
+		if err := rs.ApplyGlobalRateLimitConfig(rs.conf.globalRateLimit); err != nil {
 			return errors.Wrap(err, "error initializing global settings")
 		}
 	}
@@ -798,6 +870,10 @@ func (rs *RedisConfStore) init() error {
 		}
 	}
 
+	rs.conf.useDeprecatedLimit = false
+	rs.conf.useDeprecatedReportOnly = false
+	rs.conf.useDeprecatedRouteRateLimit = make(map[url.URL]bool)
+	rs.conf.useDeprecatedJail = make(map[url.URL]bool)
 	rs.logger.Debug("Success initializing conf")
 	return nil
 }
@@ -859,7 +935,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 	// Update deprecated fields
 	if fetched.limitCount != nil &&
 		fetched.limitDuration != nil &&
-		fetched.limitEnabled != nil { // Fall back to deprecated fields
+		fetched.limitEnabled != nil {
 		rs.conf.limit.Count = *fetched.limitCount
 		rs.conf.limit.Duration = *fetched.limitDuration
 		rs.conf.limit.Enabled = *fetched.limitEnabled
@@ -966,7 +1042,6 @@ func (rs *RedisConfStore) releaseRedisPrisonersLock(lock *redislock.Lock, start 
 	rs.reporter.RedisReleaseLock(time.Since(start), err != nil)
 }
 
-// TODO: Check for versioning
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	newConf := fetchConf{
 		rateLimitsByName: make(map[string]RateLimitConfig),
@@ -1039,13 +1114,13 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	if globalRateLimitBytes, err := globalRateLimitCmd.Bytes(); err == nil {
 		config := GlobalRateLimitConfig{}
 		if err := json.Unmarshal(globalRateLimitBytes, &config); err == nil {
-			if config.Version == redisGlobalRateLimitConfigVersionKey {
+			if config.Version == GlobalRateLimitConfigVersion {
 				newConf.globalRateLimit = &config
 			} else {
 				rs.logger.Warnf(
 					"stored global rate limit config version %v does not match current version %v; skipping",
 					config.Version,
-					redisGlobalRateLimitConfigVersionKey,
+					GlobalRateLimitConfigVersion,
 				)
 			}
 		} else {
@@ -1058,13 +1133,13 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	if globalSettingsBytes, err := globalSettingsCmd.Bytes(); err == nil {
 		config := GlobalSettingsConfig{}
 		if err := json.Unmarshal(globalSettingsBytes, &config); err != nil {
-			if config.Version == redisGlobalSettingsConfigVersionKey {
+			if config.Version == GlobalSettingsConfigVersion {
 				newConf.globalSettings = &config
 			} else {
 				rs.logger.Warnf(
 					"stored global settings config version %v does not match current version %v; skipping",
 					config.Version,
-					redisGlobalSettingsConfigVersionKey,
+					GlobalSettingsConfigVersion,
 				)
 			}
 		} else {
@@ -1077,7 +1152,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	for name, configString := range rateLimitsCmd.Val() {
 		config := RateLimitConfig{}
 		if err := json.Unmarshal([]byte(configString), &config); err == nil {
-			if config.Version == redisRateLimitsConfigVersionKey {
+			if config.Version == RateLimitConfigVersion {
 				newConf.rateLimitsByName[name] = config
 				url, err := url.Parse(config.Spec.Conditions.Path)
 				if err == nil {
@@ -1089,7 +1164,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 				rs.logger.Warnf(
 					"stored rate limit config version %v does not match current version %v; skipping",
 					config.Version,
-					redisRateLimitsConfigVersionKey,
+					RateLimitConfigVersion,
 				)
 			}
 		} else {
@@ -1100,7 +1175,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	for name, configString := range jailsCmd.Val() {
 		config := JailConfig{}
 		if err := json.Unmarshal([]byte(configString), &config); err == nil {
-			if config.Version == redisJailsConfigVersionKey {
+			if config.Version == JailConfigVersion {
 				newConf.jailsByName[name] = config
 				url, err := url.Parse(config.Spec.Conditions.Path)
 				if err == nil {
@@ -1112,7 +1187,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 				rs.logger.Warnf(
 					"stored jail config version %v does not match current version %v; skipping",
 					config.Version,
-					redisJailsConfigVersionKey,
+					JailConfigVersion,
 				)
 			}
 		} else {
