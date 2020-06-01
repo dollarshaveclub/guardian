@@ -201,7 +201,7 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 	}
 }
 
-func TestRemoveRouteRateLimits(t *testing.T) {
+func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
 	config := guardianConfig{
 		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
@@ -336,7 +336,7 @@ func TestSetJailsDeprecated(t *testing.T) {
 	}
 }
 
-func TestRemoveJail(t *testing.T) {
+func TestRemoveJailDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
 
 	config := guardianConfig{
@@ -359,6 +359,47 @@ func TestRemoveJail(t *testing.T) {
 
 	if len(res.Jails) != 0 {
 		t.Fatalf("expected route rate limits to be empty after removing them")
+	}
+}
+func TestDeleteRateLimit(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	config := guardianConfig{
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		rateLimitConfigPath:       "./config/ratelimitconfig.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	delCmd := "delete"
+	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/bar")
+	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/baz")
+
+	getCmd := "get"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd, "RateLimit")
+
+	if len(resStr) != 0 {
+		t.Fatalf("get RateLimit returned non-empty output %v", resStr)
+	}
+}
+
+func TestDeleteJail(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	config := guardianConfig{
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		jailConfigPath:            "./config/jailconfig.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	delCmd := "delete"
+	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/bar")
+	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/baz")
+
+	getCmd := "get"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd, "Jail")
+
+	if len(resStr) != 0 {
+		t.Fatalf("get Jail returned non-empty output %v", resStr)
 	}
 }
 
