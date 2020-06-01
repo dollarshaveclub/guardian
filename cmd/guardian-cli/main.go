@@ -167,14 +167,14 @@ func main() {
 	case setLimitCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a GlobalRateLimit config instead\n", setLimitCmd.FullCommand())
 		limit := guardian.Limit{Count: *limitCount, Duration: *limitDuration, Enabled: *limitEnabled}
-		err := setLimit(redisConfStore, limit)
+		err := setLimitDeprecated(redisConfStore, limit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error setting limit: %v\n", err)
 			os.Exit(1)
 		}
 	case getLimitCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get GlobalRateLimit instead\n", getLimitCmd.FullCommand())
-		limit, err := getLimit(redisConfStore)
+		limit, err := getLimitDeprecated(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting limit: %v\n", err)
 			os.Exit(1)
@@ -182,13 +182,13 @@ func main() {
 		fmt.Printf("%v\n", limit)
 	case setRouteRateLimitsCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a RateLimit config instead\n", setRouteRateLimitsCmd.FullCommand())
-		err := setRouteRateLimits(redisConfStore, *configFilePath)
+		err := setRouteRateLimitsDeprecated(redisConfStore, *configFilePath)
 		if err != nil {
 			fatalerror(fmt.Errorf("error setting route rate limits: %v", err))
 		}
 	case getRouteRateLimitsCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get RateLimit instead\n", getRouteRateLimitsCmd.FullCommand())
-		routeRateLimits, err := getRouteRateLimits(redisConfStore)
+		routeRateLimits, err := getRouteRateLimitsDeprecated(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
 			os.Exit(1)
@@ -207,20 +207,20 @@ func main() {
 		}
 		fmt.Println(string(configYaml))
 	case removeRouteRateLimitsCmd.FullCommand():
-		err := removeRouteRateLimits(redisConfStore, *removeRouteRateLimitStrings)
+		err := removeRouteRateLimitsDeprecated(redisConfStore, *removeRouteRateLimitStrings)
 		if err != nil {
 			fatalerror(fmt.Errorf("error remove route rate limits: %v", err))
 		}
 	case setReportOnlyCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a GlobalSettings config instead\n", setReportOnlyCmd.FullCommand())
-		err := setReportOnly(redisConfStore, *reportOnly)
+		err := setReportOnlyDeprecated(redisConfStore, *reportOnly)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error setting report only flag: %v\n", err)
 			os.Exit(1)
 		}
 	case getReportOnlyCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get GlobalSettings instead\n", setReportOnlyCmd.FullCommand())
-		reportOnly, err := getReportOnly(redisConfStore)
+		reportOnly, err := getReportOnlyDeprecated(redisConfStore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error getting report only flag: %v\n", err)
 			os.Exit(1)
@@ -228,18 +228,18 @@ func main() {
 		fmt.Println(reportOnly)
 	case setJailsCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a Jail config instead\n", setJailsCmd.FullCommand())
-		err := setJails(redisConfStore, *jailsConfigFilePath)
+		err := setJailsDeprecated(redisConfStore, *jailsConfigFilePath)
 		if err != nil {
 			fatalerror(fmt.Errorf("error setting jails: %v", err))
 		}
 	case removeJailsCmd.FullCommand():
-		err := removeJails(redisConfStore, *removeJailsArgs)
+		err := removeJailsDeprecated(redisConfStore, *removeJailsArgs)
 		if err != nil {
 			fatalerror(err)
 		}
 	case getJailsCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get Jail instead", getJailsCmd.FullCommand())
-		jails, err := getJails(redisConfStore)
+		jails, err := getJailsDeprecated(redisConfStore)
 		config := guardian.JailConfigDeprecated{}
 		for u, j := range jails {
 			entry := guardian.JailConfigEntryDeprecated{
@@ -525,27 +525,27 @@ func applyJailConfig(store *guardian.RedisConfStore, config guardian.JailConfig)
 	return store.ApplyJailConfig(config)
 }
 
-func setLimit(store *guardian.RedisConfStore, limit guardian.Limit) error {
+func setLimitDeprecated(store *guardian.RedisConfStore, limit guardian.Limit) error {
 	return store.SetLimitDeprecated(limit)
 }
 
-func getLimit(store *guardian.RedisConfStore) (guardian.Limit, error) {
+func getLimitDeprecated(store *guardian.RedisConfStore) (guardian.Limit, error) {
 	return store.FetchLimitDeprecated()
 }
 
-func setReportOnly(store *guardian.RedisConfStore, reportOnly bool) error {
+func setReportOnlyDeprecated(store *guardian.RedisConfStore, reportOnly bool) error {
 	return store.SetReportOnlyDeprecated(reportOnly)
 }
 
-func getReportOnly(store *guardian.RedisConfStore) (bool, error) {
+func getReportOnlyDeprecated(store *guardian.RedisConfStore) (bool, error) {
 	return store.FetchReportOnlyDeprecated()
 }
 
-func getRouteRateLimits(store *guardian.RedisConfStore) (map[url.URL]guardian.Limit, error) {
+func getRouteRateLimitsDeprecated(store *guardian.RedisConfStore) (map[url.URL]guardian.Limit, error) {
 	return store.FetchRouteRateLimitsDeprecated()
 }
 
-func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error {
+func removeRouteRateLimitsDeprecated(store *guardian.RedisConfStore, routes string) error {
 	var urls []url.URL
 	for _, route := range strings.Split(routes, ",") {
 		unwantedURL, err := url.Parse(route)
@@ -557,7 +557,7 @@ func removeRouteRateLimits(store *guardian.RedisConfStore, routes string) error 
 	return store.RemoveRouteRateLimitsDeprecated(urls)
 }
 
-func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) error {
+func setRouteRateLimitsDeprecated(store *guardian.RedisConfStore, configFilePath string) error {
 	routeRateLimits := make(map[url.URL]guardian.Limit)
 	content, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
@@ -578,7 +578,7 @@ func setRouteRateLimits(store *guardian.RedisConfStore, configFilePath string) e
 	return store.SetRouteRateLimitsDeprecated(routeRateLimits)
 }
 
-func setJails(store *guardian.RedisConfStore, configFilePath string) error {
+func setJailsDeprecated(store *guardian.RedisConfStore, configFilePath string) error {
 	jails := make(map[url.URL]guardian.Jail)
 	content, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
@@ -599,7 +599,7 @@ func setJails(store *guardian.RedisConfStore, configFilePath string) error {
 	return store.SetJailsDeprecated(jails)
 }
 
-func removeJails(store *guardian.RedisConfStore, routes string) error {
+func removeJailsDeprecated(store *guardian.RedisConfStore, routes string) error {
 	var urls []url.URL
 	for _, route := range strings.Split(routes, ",") {
 		unwantedURL, err := url.Parse(route)
@@ -611,7 +611,7 @@ func removeJails(store *guardian.RedisConfStore, routes string) error {
 	return store.RemoveJailsDeprecated(urls)
 }
 
-func getJails(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
+func getJailsDeprecated(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
 	return store.FetchJailsDeprecated()
 }
 
