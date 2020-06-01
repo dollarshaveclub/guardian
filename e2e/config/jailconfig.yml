@@ -1,5 +1,5 @@
 version: "v0"
-kind: RateLimit
+kind: Jail
 name: "/foo/bar"
 description: "/foo/bar"
 spec:
@@ -12,7 +12,7 @@ spec:
   ban_duration: 30s # Keep this duration short as it's used in tests
 ---
 version: "v0"
-kind: RateLimit
+kind: Jail
 name: "/foo/baz"
 description: "/foo/baz"
 spec:
