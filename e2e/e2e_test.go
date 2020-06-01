@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -159,73 +160,6 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
-func TestSetRouteRateLimitsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
-	config := guardianConfig{
-		whitelist:                          []string{},
-		blacklist:                          []string{},
-		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
-		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
-		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
-	}
-	applyGuardianConfig(t, *redisAddr, config)
-	getCmd := "get-route-rate-limits"
-	resStr := runGuardianCLI(t, *redisAddr, getCmd)
-	expectedResStr, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
-
-	res := guardian.RouteRateLimitConfigDeprecated{}
-	expectedRes := guardian.RouteRateLimitConfigDeprecated{}
-	err = yaml.Unmarshal([]byte(resStr), &res)
-	if err != nil {
-		t.Fatalf("error unmarshaling result string: %v", err)
-	}
-	err = yaml.Unmarshal(expectedResStr, &expectedRes)
-	if err != nil {
-		t.Fatalf("error unmarshaling expected result string: %v", err)
-	}
-
-	// Since the ordering of the slice returned from the cli can be different
-	// than the original config, we just want to verify that both configs contain
-	// the same entries in no particular order.
-	expectedResSet := make(map[string]guardian.Limit)
-	resSet := make(map[string]guardian.Limit)
-	for _, entry := range expectedRes.RouteRateLimits {
-		expectedResSet[entry.Route] = entry.Limit
-	}
-	for _, entry := range res.RouteRateLimits {
-		resSet[entry.Route] = entry.Limit
-	}
-
-	if !cmp.Equal(resSet, expectedResSet) {
-		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
-	}
-}
-
-func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
-	config := guardianConfig{
-		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
-		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
-		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
-	}
-	applyGuardianConfig(t, *redisAddr, config)
-	rmCmd := "remove-route-rate-limits"
-	runGuardianCLI(t, *redisAddr, rmCmd, "/foo/bar,/foo/baz")
-
-	getCmd := "get-route-rate-limits"
-	resStr := runGuardianCLI(t, *redisAddr, getCmd)
-
-	res := guardian.RouteRateLimitConfigDeprecated{}
-	err := yaml.Unmarshal([]byte(resStr), &res)
-	if err != nil {
-		t.Fatalf("error unmarshaling result string: %v", err)
-	}
-
-	if len(res.RouteRateLimits) != 0 {
-		t.Fatalf("expected route rate limits to be empty after removing them")
-	}
-}
-
 func TestJails(t *testing.T) {
 	resetRedis(*redisAddr)
 	whitelistedIP := "192.168.1.1"
@@ -296,6 +230,258 @@ func TestJails(t *testing.T) {
 	}
 }
 
+func TestDeleteRateLimit(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	config := guardianConfig{
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		rateLimitConfigPath:       "./config/ratelimitconfig.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	delCmd := "delete"
+	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/bar")
+	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/baz")
+
+	getCmd := "get"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd, "RateLimit")
+
+	if len(resStr) != 0 {
+		t.Fatalf("get RateLimit returned non-empty output %v", resStr)
+	}
+}
+
+func TestDeleteJail(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	config := guardianConfig{
+		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
+		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
+		jailConfigPath:            "./config/jailconfig.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	delCmd := "delete"
+	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/bar")
+	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/baz")
+
+	getCmd := "get"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd, "Jail")
+
+	if len(resStr) != 0 {
+		t.Fatalf("get Jail returned non-empty output %v", resStr)
+	}
+}
+
+func TestRateLimitDeprecated(t *testing.T) {
+	resetRedis(*redisAddr)
+
+	config := guardianConfig{
+		whitelist:               []string{},
+		blacklist:               []string{},
+		limitCountDeprecated:    5,
+		limitDurationDeprecated: time.Minute,
+		limitEnabledDeprecated:  true,
+		reportOnlyDeprecated:    false,
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+
+	for i := 0; i < 10; i++ {
+		if len(os.Getenv("SYNC")) == 0 {
+			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+		}
+
+		res := GET(t, "192.168.1.234", "/")
+		res.Body.Close()
+
+		want := 200
+		if i >= config.limitCountDeprecated {
+			want = 429
+		}
+
+		if res.StatusCode != want {
+			t.Fatalf("wanted %v, got %v, iteration %v", want, res.StatusCode, i)
+		}
+	}
+}
+
+func TestRouteRateLimitDeprecated(t *testing.T) {
+	resetRedis(*redisAddr)
+	config := guardianConfig{
+		whitelist:                          []string{},
+		blacklist:                          []string{},
+		limitCountDeprecated:               100,
+		limitDurationDeprecated:            time.Second,
+		limitEnabledDeprecated:             false,
+		reportOnlyDeprecated:               false,
+		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+
+	rrlConfig := guardian.RouteRateLimitConfigDeprecated{}
+	rrlConfigBytes, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
+	if err != nil {
+		t.Fatalf("unable to read config file: %v", err)
+	}
+	err = yaml.Unmarshal(rrlConfigBytes, &rrlConfig)
+	if err != nil {
+		t.Fatalf("error unmarshaling expected result string: %v", err)
+	}
+
+	for _, routeRateLimit := range rrlConfig.RouteRateLimits {
+		for i := uint64(0); i < routeRateLimit.Limit.Count+5; i++ {
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			}
+
+			res := GET(t, "192.168.1.234", routeRateLimit.Route)
+			res.Body.Close()
+
+			want := 200
+			if i >= routeRateLimit.Limit.Count && routeRateLimit.Limit.Enabled {
+				want = 429
+			}
+
+			if res.StatusCode != want {
+				t.Fatalf("wanted %v, got %v, iteration %v", want, res.StatusCode, i)
+			}
+		}
+	}
+}
+
+func TestJailsDeprecated(t *testing.T) {
+	resetRedis(*redisAddr)
+	whitelistedIP := "192.168.1.1"
+
+	config := guardianConfig{
+		whitelist:                []string{whitelistedIP + "/32"},
+		blacklist:                []string{},
+		limitCountDeprecated:     5,
+		limitDurationDeprecated:  time.Minute,
+		limitEnabledDeprecated:   false,
+		reportOnlyDeprecated:     false,
+		jailConfigPathDeprecated: "./config/jailconfigdeprecated.yml",
+	}
+
+	applyGuardianConfig(t, *redisAddr, config)
+	jailConfig := &guardian.JailConfigDeprecated{}
+	jailConfigContents, err := ioutil.ReadFile(config.jailConfigPathDeprecated)
+	if err != nil {
+		t.Fatalf("unable to read config file: %v", err)
+	}
+	err = yaml.Unmarshal(jailConfigContents, jailConfig)
+	if err != nil {
+		t.Fatalf("error unmarhsaling config file contents: %v", err)
+	}
+
+	// Assumes that any BanDuration in the Jail Config is greater than the time it takes
+	// to execute this particular test.
+	for _, j := range jailConfig.Jails {
+		banned := false
+		resetRedis(*redisAddr)
+		applyGuardianConfig(t, *redisAddr, config)
+		for i := uint64(0); i < j.Jail.Limit.Count+1; i++ {
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			}
+
+			res := GET(t, "192.168.1.43", j.Route)
+			whitelistedRes := GET(t, whitelistedIP, j.Route)
+			res.Body.Close()
+			whitelistedRes.Body.Close()
+
+			want := 200
+			if (i >= j.Jail.Limit.Count && j.Jail.Limit.Enabled) || banned {
+				banned = true
+				want = 429
+			}
+
+			if res.StatusCode != want {
+				t.Fatalf("wanted %v, got %v, iteration %v, route: %v", want, res.StatusCode, i, j.Route)
+			}
+
+			if whitelistedRes.StatusCode != 200 {
+				t.Fatalf("whitelisted ip received unexpected status code: wanted %v, got %v, iteration %d, route: %v", 200, whitelistedRes.StatusCode, i, j.Route)
+			}
+		}
+		if j.Jail.Limit.Enabled {
+			t.Logf("sleeping for ban_duration: %v + 2 seconds to ensure the prisoner is removed", j.Jail.BanDuration)
+			time.Sleep(j.Jail.BanDuration)
+			time.Sleep(2 * time.Second) // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
+			res := GET(t, "192.168.1.43", j.Route)
+			if res.StatusCode != 200 {
+				t.Fatalf("prisoner was never removed, received unexpected status code: %d, %v", res.StatusCode, j.Jail)
+			}
+		}
+	}
+}
+
+func TestSetRouteRateLimitsDeprecated(t *testing.T) {
+	resetRedis(*redisAddr)
+	config := guardianConfig{
+		whitelist:                          []string{},
+		blacklist:                          []string{},
+		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
+		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	getCmd := "get-route-rate-limits"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+	expectedResStr, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
+
+	res := guardian.RouteRateLimitConfigDeprecated{}
+	expectedRes := guardian.RouteRateLimitConfigDeprecated{}
+	err = yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+	err = yaml.Unmarshal(expectedResStr, &expectedRes)
+	if err != nil {
+		t.Fatalf("error unmarshaling expected result string: %v", err)
+	}
+
+	// Since the ordering of the slice returned from the cli can be different
+	// than the original config, we just want to verify that both configs contain
+	// the same entries in no particular order.
+	expectedResSet := make(map[string]guardian.Limit)
+	resSet := make(map[string]guardian.Limit)
+	for _, entry := range expectedRes.RouteRateLimits {
+		expectedResSet[entry.Route] = entry.Limit
+	}
+	for _, entry := range res.RouteRateLimits {
+		resSet[entry.Route] = entry.Limit
+	}
+
+	if !cmp.Equal(resSet, expectedResSet) {
+		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
+	}
+}
+
+func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
+	resetRedis(*redisAddr)
+	config := guardianConfig{
+		globalRateLimitConfigPath:          "./config/noglobalratelimitconfig.yml",
+		globalSettingsConfigPath:           "./config/globalsettingsconfig.yml",
+		routeRateLimitConfigPathDeprecated: "./config/routeratelimitconfigdeprecated.yml",
+	}
+	applyGuardianConfig(t, *redisAddr, config)
+	rmCmd := "remove-route-rate-limits"
+	runGuardianCLI(t, *redisAddr, rmCmd, "/foo/bar,/foo/baz")
+
+	getCmd := "get-route-rate-limits"
+	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+
+	res := guardian.RouteRateLimitConfigDeprecated{}
+	err := yaml.Unmarshal([]byte(resStr), &res)
+	if err != nil {
+		t.Fatalf("error unmarshaling result string: %v", err)
+	}
+
+	if len(res.RouteRateLimits) != 0 {
+		t.Fatalf("expected route rate limits to be empty after removing them")
+	}
+}
+
 func TestSetJailsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
 	config := guardianConfig{
@@ -361,47 +547,6 @@ func TestRemoveJailDeprecated(t *testing.T) {
 		t.Fatalf("expected route rate limits to be empty after removing them")
 	}
 }
-func TestDeleteRateLimit(t *testing.T) {
-	resetRedis(*redisAddr)
-
-	config := guardianConfig{
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
-		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-		rateLimitConfigPath:       "./config/ratelimitconfig.yml",
-	}
-	applyGuardianConfig(t, *redisAddr, config)
-	delCmd := "delete"
-	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/bar")
-	runGuardianCLI(t, *redisAddr, delCmd, "RateLimit", "/foo/baz")
-
-	getCmd := "get"
-	resStr := runGuardianCLI(t, *redisAddr, getCmd, "RateLimit")
-
-	if len(resStr) != 0 {
-		t.Fatalf("get RateLimit returned non-empty output %v", resStr)
-	}
-}
-
-func TestDeleteJail(t *testing.T) {
-	resetRedis(*redisAddr)
-
-	config := guardianConfig{
-		globalRateLimitConfigPath: "./config/globalratelimitconfig.yml",
-		globalSettingsConfigPath:  "./config/globalsettingsconfig.yml",
-		jailConfigPath:            "./config/jailconfig.yml",
-	}
-	applyGuardianConfig(t, *redisAddr, config)
-	delCmd := "delete"
-	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/bar")
-	runGuardianCLI(t, *redisAddr, delCmd, "Jail", "/foo/baz")
-
-	getCmd := "get"
-	resStr := runGuardianCLI(t, *redisAddr, getCmd, "Jail")
-
-	if len(resStr) != 0 {
-		t.Fatalf("get Jail returned non-empty output %v", resStr)
-	}
-}
 
 func GET(t *testing.T, sourceIP string, path string) *http.Response {
 	t.Helper()
@@ -433,12 +578,17 @@ func resetRedis(redisAddr string) {
 }
 
 type guardianConfig struct {
-	whitelist                          []string
-	blacklist                          []string
-	globalRateLimitConfigPath          string
-	globalSettingsConfigPath           string
-	rateLimitConfigPath                string
-	jailConfigPath                     string
+	whitelist                 []string
+	blacklist                 []string
+	globalRateLimitConfigPath string
+	globalSettingsConfigPath  string
+	rateLimitConfigPath       string
+	jailConfigPath            string
+	// Fields associated with deprecated CLI
+	limitCountDeprecated               int
+	limitDurationDeprecated            time.Duration
+	limitEnabledDeprecated             bool
+	reportOnlyDeprecated               bool
 	routeRateLimitConfigPathDeprecated string
 	jailConfigPathDeprecated           string
 }
@@ -448,10 +598,21 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 
 	if len(c.globalRateLimitConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "apply", c.globalRateLimitConfigPath)
+	} else {
+		runGuardianCLI(
+			t,
+			redisAddr,
+			"set-limit",
+			strconv.Itoa(c.limitCountDeprecated),
+			c.limitDurationDeprecated.String(),
+			strconv.FormatBool(c.limitEnabledDeprecated),
+		)
 	}
 
 	if len(c.globalSettingsConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "apply", c.globalSettingsConfigPath)
+	} else {
+		runGuardianCLI(t, redisAddr, "set-report-only", strconv.FormatBool(c.reportOnlyDeprecated))
 	}
 
 	clearXList(t, redisAddr, "blacklist")
@@ -467,17 +628,13 @@ func applyGuardianConfig(t *testing.T, redisAddr string, c guardianConfig) {
 
 	if len(c.rateLimitConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "apply", c.rateLimitConfigPath)
+	} else if len(c.routeRateLimitConfigPathDeprecated) > 0 {
+		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPathDeprecated)
 	}
 
 	if len(c.jailConfigPath) > 0 {
 		runGuardianCLI(t, redisAddr, "apply", c.jailConfigPath)
-	}
-
-	if len(c.routeRateLimitConfigPathDeprecated) > 0 {
-		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPathDeprecated)
-	}
-
-	if len(c.jailConfigPathDeprecated) > 0 {
+	} else if len(c.jailConfigPathDeprecated) > 0 {
 		runGuardianCLI(t, redisAddr, "set-jails", c.jailConfigPathDeprecated)
 	}
 

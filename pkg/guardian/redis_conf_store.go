@@ -38,20 +38,24 @@ const (
 	// The remaining keys are associated with the deprecated CLI config.
 
 	// Corresponds to redisGlobalRateLimitConfigKey
-	redisLimitCountKey    = "guardian_conf:limit_count"
-	redisLimitDurationKey = "guardian_conf:limit_duration"
-	redisLimitEnabledKey  = "guardian_conf:limit_enabled"
+	redisLimitCountKey         = "guardian_conf:limit_count"
+	redisLimitDurationKey      = "guardian_conf:limit_duration"
+	redisLimitEnabledKey       = "guardian_conf:limit_enabled"
+	redisUseDeprecatedLimitKey = "guardian_conf:use_deprecated_limit"
 	// Corresponds to redisGlobalSettingsConfigKey
-	redisReportOnlyKey = "guardian_conf:reportOnly"
+	redisReportOnlyKey              = "guardian_conf:reportOnly"
+	redisUseDeprecatedReportOnlyKey = "guardian_conf:use_deprecated_reportOnly"
 	// Corresponds to redisRateLimitsConfigKey
-	redisRouteRateLimitsEnabledKey  = "guardian_conf:route_limits:enabled"
-	redisRouteRateLimitsDurationKey = "guardian_conf:route_limits:duration"
-	redisRouteRateLimitsCountKey    = "guardian_conf:route_limits:count"
+	redisRouteRateLimitsEnabledKey       = "guardian_conf:route_limits:enabled"
+	redisRouteRateLimitsDurationKey      = "guardian_conf:route_limits:duration"
+	redisRouteRateLimitsCountKey         = "guardian_conf:route_limits:count"
+	redisUseDeprecatedRouteRateLimitsKey = "guardian_conf:use_deprecated_route_limits"
 	// Corresponds to redisJailsConfigKey
 	redisJailLimitsEnabledKey  = "guardian_conf:jail:limits:enabled"
 	redisJailLimitsDurationKey = "guardian_conf:jail:limits:duration"
 	redisJailLimitsCountKey    = "guardian_conf:jail:limits:count"
 	redisJailBanDurationKey    = "guardian_conf:jail:ban:duration"
+	redisUseDeprecatedJailsKey = "guardian_conf:use_deprecated_jails"
 )
 
 // NewRedisConfStore creates a new RedisConfStore
@@ -445,11 +449,14 @@ func (rs *RedisConfStore) ApplyJailConfig(config JailConfig) error {
 	if err != nil {
 		return fmt.Errorf("error parsing path: %v", err)
 	}
-	err = rs.redis.HSet(redisJailsConfigKey, config.Name, string(configBytes)).Err()
+	pipe := rs.redis.TxPipeline()
+	pipe.HSet(redisJailsConfigKey, config.Name, string(configBytes))
+	pipe.HSet(redisUseDeprecatedJailsKey, url.EscapedPath(), "false")
+
+	_, err = pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedJail[*url] = false
 	return nil
 }
 
@@ -466,11 +473,11 @@ func (rs *RedisConfStore) SetJailsDeprecated(jails map[url.URL]Jail) error {
 		pipe.HSet(redisJailLimitsDurationKey, route, limitDurationStr)
 		pipe.HSet(redisJailLimitsEnabledKey, route, limitEnabledStr)
 		pipe.HSet(redisJailBanDurationKey, route, jailBanDuration)
+		pipe.HSet(redisUseDeprecatedJailsKey, route, "true")
 		_, err := pipe.Exec()
 		if err != nil {
 			return err
 		}
-		rs.conf.useDeprecatedJail[url] = true
 	}
 	return nil
 }
@@ -569,11 +576,13 @@ func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
 	if err != nil {
 		return fmt.Errorf("error parsing path: %v", err)
 	}
-	err = rs.redis.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes)).Err()
+	pipe := rs.redis.TxPipeline()
+	pipe.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes))
+	pipe.HSet(redisUseDeprecatedRouteRateLimitsKey, url.EscapedPath(), "false")
+	_, err = pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedRouteRateLimit[*url] = false
 	return nil
 }
 
@@ -581,7 +590,6 @@ func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
 // If the route limit is already defined in the store, it will be overwritten.
 func (rs *RedisConfStore) SetRouteRateLimitsDeprecated(routeRateLimits map[url.URL]Limit) error {
 	for url, limit := range routeRateLimits {
-		rs.conf.useDeprecatedRouteRateLimit[url] = true
 		route := url.EscapedPath()
 		limitCountStr := strconv.FormatUint(limit.Count, 10)
 		limitDurationStr := limit.Duration.String()
@@ -591,6 +599,7 @@ func (rs *RedisConfStore) SetRouteRateLimitsDeprecated(routeRateLimits map[url.U
 		pipe.HSet(redisRouteRateLimitsCountKey, route, limitCountStr)
 		pipe.HSet(redisRouteRateLimitsDurationKey, route, limitDurationStr)
 		pipe.HSet(redisRouteRateLimitsEnabledKey, route, limitEnabledStr)
+		pipe.HSet(redisUseDeprecatedRouteRateLimitsKey, route, "true")
 		_, err := pipe.Exec()
 		if err != nil {
 			return err
@@ -681,11 +690,14 @@ func (rs *RedisConfStore) ApplyGlobalRateLimitConfig(config GlobalRateLimitConfi
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	err = rs.redis.Set(redisGlobalRateLimitConfigKey, string(configBytes), 0).Err()
+	pipe := rs.redis.TxPipeline()
+	pipe.Set(redisGlobalRateLimitConfigKey, string(configBytes), 0)
+	pipe.Set(redisUseDeprecatedLimitKey, "false", 0)
+
+	_, err = pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedLimit = false
 	return nil
 }
 
@@ -724,12 +736,12 @@ func (rs *RedisConfStore) SetLimitDeprecated(limit Limit) error {
 	pipe.Set(redisLimitCountKey, limitCountStr, 0)
 	pipe.Set(redisLimitDurationKey, limitDurationStr, 0)
 	pipe.Set(redisLimitEnabledKey, limitEnabledStr, 0)
+	pipe.Set(redisUseDeprecatedLimitKey, "true", 0)
 
 	_, err := pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedLimit = true
 	return nil
 }
 
@@ -738,11 +750,14 @@ func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	err = rs.redis.Set(redisGlobalSettingsConfigKey, string(configBytes), 0).Err()
+	pipe := rs.redis.TxPipeline()
+	pipe.Set(redisGlobalSettingsConfigKey, string(configBytes), 0)
+	pipe.Set(redisUseDeprecatedReportOnlyKey, "false", 0)
+
+	_, err = pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedReportOnly = false
 	return nil
 }
 
@@ -775,11 +790,15 @@ func (rs *RedisConfStore) FetchReportOnlyDeprecated() (bool, error) {
 
 func (rs *RedisConfStore) SetReportOnlyDeprecated(reportOnly bool) error {
 	reportOnlyStr := strconv.FormatBool(reportOnly)
-	err := rs.redis.Set(redisReportOnlyKey, reportOnlyStr, 0).Err()
+
+	pipe := rs.redis.TxPipeline()
+	pipe.Set(redisReportOnlyKey, reportOnlyStr, 0).Err()
+	pipe.Set(redisUseDeprecatedReportOnlyKey, "true", 0)
+
+	_, err := pipe.Exec()
 	if err != nil {
 		return err
 	}
-	rs.conf.useDeprecatedReportOnly = true
 	return nil
 }
 
@@ -939,18 +958,30 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.limit.Count = *fetched.limitCount
 		rs.conf.limit.Duration = *fetched.limitDuration
 		rs.conf.limit.Enabled = *fetched.limitEnabled
+	}
 
-		if fetched.globalRateLimit == nil {
+	if fetched.useDeprecatedLimit != nil {
+		rs.conf.useDeprecatedLimit = *fetched.useDeprecatedLimit
+
+		if *fetched.useDeprecatedLimit {
 			rs.reporter.CurrentGlobalLimit(rs.conf.limit)
 		}
+	} else {
+		rs.conf.useDeprecatedLimit = false
 	}
 
 	if fetched.reportOnly != nil {
 		rs.conf.reportOnly = *fetched.reportOnly
+	}
 
-		if fetched.globalSettings == nil {
+	if fetched.useDeprecatedReportOnly != nil {
+		rs.conf.useDeprecatedReportOnly = *fetched.useDeprecatedReportOnly
+
+		if *fetched.useDeprecatedReportOnly {
 			rs.reporter.CurrentReportOnlyMode(rs.conf.reportOnly)
 		}
+	} else {
+		rs.conf.useDeprecatedReportOnly = false
 	}
 
 	rs.conf.routeRateLimits = make(map[url.URL]Limit, len(fetched.routeLimitCounts))
@@ -967,6 +998,18 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 			rs.conf.routeRateLimits[url] = l
 			if _, ok := rs.conf.rateLimitsByURL[url]; !ok {
 				rs.reporter.CurrentRouteLimit(url.Path, l)
+			}
+		}
+	}
+
+	rs.conf.useDeprecatedRouteRateLimit = make(map[url.URL]bool, len(fetched.useDeprecatedRouteRateLimit))
+
+	for url, useDeprecated := range fetched.useDeprecatedRouteRateLimit {
+		if useDeprecated != nil {
+			rs.conf.useDeprecatedRouteRateLimit[url] = *useDeprecated
+
+			if *useDeprecated {
+				rs.reporter.CurrentRouteLimit(url.Path, rs.conf.routeRateLimits[url])
 			}
 		}
 	}
@@ -993,6 +1036,18 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		}
 	}
 
+	rs.conf.useDeprecatedJail = make(map[url.URL]bool, len(fetched.useDeprecatedJail))
+
+	for url, useDeprecated := range fetched.useDeprecatedJail {
+		if useDeprecated != nil {
+			rs.conf.useDeprecatedJail[url] = *useDeprecated
+
+			if *useDeprecated {
+				rs.reporter.CurrentRouteJail(url.Path, rs.conf.jails[url])
+			}
+		}
+	}
+
 	rs.reporter.CurrentWhitelist(rs.conf.whitelist)
 	rs.reporter.CurrentBlacklist(rs.conf.blacklist)
 	rs.reporter.CurrentPrisoners(rs.conf.prisoners.length())
@@ -1009,17 +1064,21 @@ type fetchConf struct {
 	jailsByName      map[string]JailConfig
 	jailsByURL       map[url.URL]JailConfig
 	// Fields associated with the deprecated CLI
-	limitCount             *uint64
-	limitDuration          *time.Duration
-	limitEnabled           *bool
-	reportOnly             *bool
-	routeLimitDurations    map[url.URL]*time.Duration
-	routeLimitCounts       map[url.URL]*uint64
-	routeRateLimitsEnabled map[url.URL]*bool
-	jailLimitDurations     map[url.URL]*time.Duration
-	jailLimitCounts        map[url.URL]*uint64
-	jailLimitsEnabled      map[url.URL]*bool
-	jailBanDuration        map[url.URL]*time.Duration
+	limitCount                  *uint64
+	limitDuration               *time.Duration
+	limitEnabled                *bool
+	useDeprecatedLimit          *bool
+	reportOnly                  *bool
+	useDeprecatedReportOnly     *bool
+	routeLimitDurations         map[url.URL]*time.Duration
+	routeLimitCounts            map[url.URL]*uint64
+	routeRateLimitsEnabled      map[url.URL]*bool
+	useDeprecatedRouteRateLimit map[url.URL]*bool
+	jailLimitDurations          map[url.URL]*time.Duration
+	jailLimitCounts             map[url.URL]*uint64
+	jailLimitsEnabled           map[url.URL]*bool
+	jailBanDuration             map[url.URL]*time.Duration
+	useDeprecatedJail           map[url.URL]*bool
 }
 
 func (rs *RedisConfStore) obtainRedisPrisonersLock() (*redislock.Lock, error) {
@@ -1049,13 +1108,15 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		jailsByName:      make(map[string]JailConfig),
 		jailsByURL:       make(map[url.URL]JailConfig),
 		// Fields associated with the deprecated CLI
-		routeLimitDurations:    make(map[url.URL]*time.Duration),
-		routeLimitCounts:       make(map[url.URL]*uint64),
-		routeRateLimitsEnabled: make(map[url.URL]*bool),
-		jailLimitDurations:     make(map[url.URL]*time.Duration),
-		jailLimitCounts:        make(map[url.URL]*uint64),
-		jailLimitsEnabled:      make(map[url.URL]*bool),
-		jailBanDuration:        make(map[url.URL]*time.Duration),
+		routeLimitDurations:         make(map[url.URL]*time.Duration),
+		routeLimitCounts:            make(map[url.URL]*uint64),
+		routeRateLimitsEnabled:      make(map[url.URL]*bool),
+		useDeprecatedRouteRateLimit: make(map[url.URL]*bool),
+		jailLimitDurations:          make(map[url.URL]*time.Duration),
+		jailLimitCounts:             make(map[url.URL]*uint64),
+		jailLimitsEnabled:           make(map[url.URL]*bool),
+		jailBanDuration:             make(map[url.URL]*time.Duration),
+		useDeprecatedJail:           make(map[url.URL]*bool),
 	}
 
 	rs.logger.Debugf("Sending GET for key %v", redisGlobalRateLimitConfigKey)
@@ -1067,14 +1128,18 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	rs.logger.Debugf("Sending GET for key %v", redisLimitCountKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitDurationKey)
 	rs.logger.Debugf("Sending GET for key %v", redisLimitEnabledKey)
+	rs.logger.Debugf("Sending GET for key %v", redisUseDeprecatedLimitKey)
 	rs.logger.Debugf("Sending GET for key %v", redisReportOnlyKey)
+	rs.logger.Debugf("Sending GET for key %v", redisUseDeprecatedReportOnlyKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsCountKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsDurationKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisUseDeprecatedRouteRateLimitsKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsCountKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsDurationKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailLimitsEnabledKey)
 	rs.logger.Debugf("Sending HGETALL for key %v", redisJailBanDurationKey)
+	rs.logger.Debugf("Sending HGETALL for key %v", redisUseDeprecatedJailsKey)
 
 	pipe := rs.redis.Pipeline()
 	defer pipe.Close()
@@ -1088,14 +1153,18 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	limitCountCmd := pipe.Get(redisLimitCountKey)
 	limitDurationCmd := pipe.Get(redisLimitDurationKey)
 	limitEnabledCmd := pipe.Get(redisLimitEnabledKey)
+	useDeprecatedLimitCmd := pipe.Get(redisUseDeprecatedLimitKey)
 	reportOnlyCmd := pipe.Get(redisReportOnlyKey)
+	useDeprecatedReportOnlyCmd := pipe.Get(redisUseDeprecatedReportOnlyKey)
 	routeRateLimitsCountCmd := pipe.HGetAll(redisRouteRateLimitsCountKey)
 	routeRateLimitsDurationCmd := pipe.HGetAll(redisRouteRateLimitsDurationKey)
 	routeRateLimitsEnabledCmd := pipe.HGetAll(redisRouteRateLimitsEnabledKey)
+	useDeprecatedRouteRateLimitCmd := pipe.HGetAll(redisUseDeprecatedRouteRateLimitsKey)
 	jailLimitCountCmd := pipe.HGetAll(redisJailLimitsCountKey)
 	jailLimitDurationCmd := pipe.HGetAll(redisJailLimitsDurationKey)
 	jailLimitEnabledCmd := pipe.HGetAll(redisJailLimitsEnabledKey)
 	jailBanDurationCmd := pipe.HGetAll(redisJailBanDurationKey)
+	useDeprecatedJailCmd := pipe.HGetAll(redisUseDeprecatedJailsKey)
 
 	pipe.Exec()
 
@@ -1225,6 +1294,15 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		rs.logger.WithError(err).Errorf("error sending GET for key %v", redisLimitEnabledKey)
 	}
 
+	if useDeprecatedLimitStr, err := useDeprecatedLimitCmd.Result(); err == nil {
+		useDeprecatedLimit, err := strconv.ParseBool(useDeprecatedLimitStr)
+		if err != nil {
+			rs.logger.WithError(err).Errorf("error sending GET for key %v", redisUseDeprecatedLimitKey)
+		} else {
+			newConf.useDeprecatedLimit = &useDeprecatedLimit
+		}
+	}
+
 	if reportOnlyStr, err := reportOnlyCmd.Result(); err == nil {
 		reportOnly, err := strconv.ParseBool(reportOnlyStr)
 		if err != nil {
@@ -1234,6 +1312,15 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else if err != redis.Nil {
 		rs.logger.WithError(err).Warnf("error sending GET for key %v", redisReportOnlyKey)
+	}
+
+	if useDeprecatedReportOnlyStr, err := useDeprecatedReportOnlyCmd.Result(); err == nil {
+		useDeprecatedReportOnly, err := strconv.ParseBool(useDeprecatedReportOnlyStr)
+		if err != nil {
+			rs.logger.WithError(err).Errorf("error sending GET for key %v", redisUseDeprecatedLimitKey)
+		} else {
+			newConf.useDeprecatedReportOnly = &useDeprecatedReportOnly
+		}
 	}
 
 	if routeRateLimitsCounts, err := routeRateLimitsCountCmd.Result(); err == nil {
@@ -1276,6 +1363,18 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else if err != redis.Nil {
 		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisRouteRateLimitsEnabledKey)
+	}
+
+	if useDeprecatedRouteRateLimits, err := useDeprecatedRouteRateLimitCmd.Result(); err == nil {
+		for route, useDeprecatedStr := range useDeprecatedRouteRateLimits {
+			parsedURL, urlParseErr := url.Parse(route)
+			useDeprecated, boolParseErr := strconv.ParseBool(useDeprecatedStr)
+			if urlParseErr != nil || boolParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(boolParseErr).Warnf("error parsing route limit use deprecated for %v", route)
+			} else {
+				newConf.useDeprecatedRouteRateLimit[*parsedURL] = &useDeprecated
+			}
+		}
 	}
 
 	if jailLimitCounts, err := jailLimitCountCmd.Result(); err == nil {
@@ -1332,6 +1431,18 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		}
 	} else if err != redis.Nil {
 		rs.logger.WithError(err).Warnf("error sending HGETALL for key %v", redisJailLimitsEnabledKey)
+	}
+
+	if useDeprecatedJails, err := useDeprecatedJailCmd.Result(); err == nil {
+		for route, useDeprecatedStr := range useDeprecatedJails {
+			parsedURL, urlParseErr := url.Parse(route)
+			useDeprecated, boolParseErr := strconv.ParseBool(useDeprecatedStr)
+			if urlParseErr != nil || boolParseErr != nil {
+				rs.logger.WithError(urlParseErr).WithError(boolParseErr).Warnf("error parsing jail use deprecated for %v", route)
+			} else {
+				newConf.useDeprecatedJail[*parsedURL] = &useDeprecated
+			}
+		}
 	}
 
 	lock, err := rs.obtainRedisPrisonersLock()
