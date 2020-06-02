@@ -238,7 +238,7 @@ func main() {
 			fatalerror(err)
 		}
 	case getJailsCmd.FullCommand():
-		fmt.Fprintf(os.Stderr, "%s is deprecated: get Jail instead", getJailsCmd.FullCommand())
+		fmt.Fprintf(os.Stderr, "%s is deprecated: get Jail instead\n", getJailsCmd.FullCommand())
 		jails, err := getJailsDeprecated(redisConfStore)
 		config := guardian.JailConfigDeprecated{}
 		for u, j := range jails {

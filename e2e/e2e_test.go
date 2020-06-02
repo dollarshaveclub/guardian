@@ -382,7 +382,7 @@ func TestJailsDeprecated(t *testing.T) {
 	for _, j := range jailConfig.Jails {
 		banned := false
 		resetRedis(*redisAddr)
-		applyGuardianConfig(t, *redisAddr, config)
+		applyGuardianConfigDeprecated(t, *redisAddr, config)
 		for i := uint64(0); i < j.Jail.Limit.Count+1; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
 				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
@@ -426,7 +426,7 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 		blacklist:                          []string{},
 		routeRateLimitConfigPathDeprecated: "./config/TestSetRouteRateLimitsDeprecated/routeratelimitconfig.yml",
 	}
-	applyGuardianConfig(t, *redisAddr, config)
+	applyGuardianConfigDeprecated(t, *redisAddr, config)
 	getCmd := "get-route-rate-limits"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
 	expectedResStr, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
@@ -492,10 +492,11 @@ func TestSetJailsDeprecated(t *testing.T) {
 		blacklist:                []string{},
 		jailConfigPathDeprecated: "./config/TestSetJailsDeprecated/jailconfig.yml",
 	}
-	applyGuardianConfig(t, *redisAddr, config)
+	applyGuardianConfigDeprecated(t, *redisAddr, config)
 
 	getCmd := "get-jails"
 	resStr := runGuardianCLI(t, *redisAddr, getCmd)
+	t.Logf("Got result: %v", resStr)
 	expectedResStr, err := ioutil.ReadFile(config.jailConfigPathDeprecated)
 	res := guardian.JailConfigDeprecated{}
 	expectedRes := guardian.JailConfigDeprecated{}
@@ -533,7 +534,7 @@ func TestRemoveJailDeprecated(t *testing.T) {
 		blacklist:                []string{},
 		jailConfigPathDeprecated: "./config/TestRemoveJailDeprecated/jailconfig.yml",
 	}
-	applyGuardianConfig(t, *redisAddr, config)
+	applyGuardianConfigDeprecated(t, *redisAddr, config)
 	rmCmd := "remove-jails"
 	runGuardianCLI(t, *redisAddr, rmCmd, "/foo/bar,/foo/baz")
 
@@ -658,8 +659,8 @@ func applyGuardianConfigDeprecated(t *testing.T, redisAddr string, c guardianCon
 		runGuardianCLI(t, redisAddr, "set-route-rate-limits", c.routeRateLimitConfigPathDeprecated)
 	}
 
-	if len(c.jailConfigPath) > 0 {
-		runGuardianCLI(t, redisAddr, "set-jails", c.jailConfigPath)
+	if len(c.jailConfigPathDeprecated) > 0 {
+		runGuardianCLI(t, redisAddr, "set-jails", c.jailConfigPathDeprecated)
 	}
 
 	time.Sleep(2 * time.Second)
