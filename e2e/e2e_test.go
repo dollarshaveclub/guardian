@@ -500,6 +500,7 @@ func TestSetJailsDeprecated(t *testing.T) {
 		limitCountDeprecated:     100,
 		limitDurationDeprecated:  time.Second,
 		limitEnabledDeprecated:   false,
+		reportOnlyDeprecated:     false,
 		jailConfigPathDeprecated: "./config/TestSetJailsDeprecated/jailconfig.yml",
 	}
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
@@ -542,6 +543,10 @@ func TestRemoveJailDeprecated(t *testing.T) {
 	config := guardianConfig{
 		whitelist:                []string{},
 		blacklist:                []string{},
+		limitCountDeprecated:     100,
+		limitDurationDeprecated:  time.Second,
+		limitEnabledDeprecated:   false,
+		reportOnlyDeprecated:     false,
 		jailConfigPathDeprecated: "./config/TestRemoveJailDeprecated/jailconfig.yml",
 	}
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
