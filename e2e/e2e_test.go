@@ -424,6 +424,10 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 	config := guardianConfig{
 		whitelist:                          []string{},
 		blacklist:                          []string{},
+		limitCountDeprecated:               100,
+		limitDurationDeprecated:            time.Second,
+		limitEnabledDeprecated:             false,
+		reportOnlyDeprecated:               false,
 		routeRateLimitConfigPathDeprecated: "./config/TestSetRouteRateLimitsDeprecated/routeratelimitconfig.yml",
 	}
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
@@ -461,10 +465,13 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 
 func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
-	// TODO: Set Global configs?
 	config := guardianConfig{
 		whitelist:                          []string{},
 		blacklist:                          []string{},
+		limitCountDeprecated:               100,
+		limitDurationDeprecated:            time.Second,
+		limitEnabledDeprecated:             false,
+		reportOnlyDeprecated:               false,
 		routeRateLimitConfigPathDeprecated: "./config/TestRemoveRouteRateLimitsDeprecated/routeratelimitconfig.yml",
 	}
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
@@ -490,6 +497,9 @@ func TestSetJailsDeprecated(t *testing.T) {
 	config := guardianConfig{
 		whitelist:                []string{},
 		blacklist:                []string{},
+		limitCountDeprecated:     100,
+		limitDurationDeprecated:  time.Second,
+		limitEnabledDeprecated:   false,
 		jailConfigPathDeprecated: "./config/TestSetJailsDeprecated/jailconfig.yml",
 	}
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
