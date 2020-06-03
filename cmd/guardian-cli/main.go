@@ -54,35 +54,35 @@ func main() {
 	getBlacklistCmd := app.Command("get-blacklist", "Get blacklisted CIDRs")
 
 	// Rate limiting (deprecated CLI)
-	setLimitCmd := app.Command("set-limit", "Sets the IP rate limit")
+	setLimitCmd := app.Command("set-limit", "Sets the IP rate limit (deprecated)")
 	limitCount := setLimitCmd.Arg("count", "limit count").Required().Uint64()
 	limitDuration := setLimitCmd.Arg("duration", "limit duration").Required().Duration()
 	limitEnabled := setLimitCmd.Arg("enabled", "limit enabled").Required().Bool()
 
-	getLimitCmd := app.Command("get-limit", "Gets the IP rate limit")
+	getLimitCmd := app.Command("get-limit", "Gets the IP rate limit (deprecated)")
 
 	// Route rate limiting (deprecated CLI)
-	setRouteRateLimitsCmd := app.Command("set-route-rate-limits", "Sets rate limits for provided routes")
+	setRouteRateLimitsCmd := app.Command("set-route-rate-limits", "Sets rate limits for provided routes (deprecated)")
 	configFilePath := setRouteRateLimitsCmd.Arg("route-rate-limit-config-file", "path to configuration file").Required().String()
-	removeRouteRateLimitsCmd := app.Command("remove-route-rate-limits", "Removes rate limits for provided routes")
+	removeRouteRateLimitsCmd := app.Command("remove-route-rate-limits", "Removes rate limits for provided routes (deprecated)")
 	removeRouteRateLimitStrings := removeRouteRateLimitsCmd.Arg("routes", "Comma seperated list of routes to remove").Required().String()
-	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route")
+	getRouteRateLimitsCmd := app.Command("get-route-rate-limits", "Gets the IP rate limits for each route (deprecated)")
 
 	// Jails (deprecated CLI)
-	setJailsCmd := app.Command("set-jails", "Sets rate limits for provided routes")
+	setJailsCmd := app.Command("set-jails", "Sets rate limits for provided routes (deprecated)")
 	jailsConfigFilePath := setJailsCmd.Arg("jail-config-file", "Path to configuration file").Required().String()
-	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes")
+	removeJailsCmd := app.Command("remove-jails", "Removes rate limits for provided routes (deprecated)")
 	removeJailsArgs := removeJailsCmd.Arg("jail-routes", "Comma separated list of jails to remove. Use the name of the route").Required().String()
-	getJailsCmd := app.Command("get-jails", "Lists all of the jails")
+	getJailsCmd := app.Command("get-jails", "Lists all of the jails (deprecated)")
 	getPrisonersCmd := app.Command("get-prisoners", "List all prisoners")
 	removePrisonersCmd := app.Command("remove-prisoners", "Removes prisoners from")
 	prisoners := removePrisonersCmd.Arg("prisoners", "Comma separated list of ip address to remove").Required().String()
 
 	// Report Only (deprecated CLI)
-	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag")
+	setReportOnlyCmd := app.Command("set-report-only", "Sets the report only flag (deprecated)")
 	reportOnly := setReportOnlyCmd.Arg("report-only", "report only enabled").Required().Bool()
 
-	getReportOnlyCmd := app.Command("get-report-only", "Gets the report only flag")
+	getReportOnlyCmd := app.Command("get-report-only", "Gets the report only flag (deprecated)")
 
 	selectedCmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 	redisOpts := &redis.Options{Addr: *redisAddress}
@@ -274,12 +274,18 @@ func main() {
 
 func applyConfig(store *guardian.RedisConfStore, configFilePaths []string, logger logrus.FieldLogger) error {
 	for _, configFilePath := range configFilePaths {
-		file, err := os.Open(configFilePath)
-		if err != nil {
-			return fmt.Errorf("error opening config file: %v", err)
+		var r io.Reader
+		if configFilePath == "-" {
+			r = os.Stdin
+		} else {
+			file, err := os.Open(configFilePath)
+			if err != nil {
+				return fmt.Errorf("error opening config file: %v", err)
+			}
+			defer file.Close()
+			r = file
 		}
-		defer file.Close()
-		dec := yaml.NewDecoder(file)
+		dec := yaml.NewDecoder(r)
 		for {
 			var config struct {
 				guardian.ConfigMetadata `yaml:",inline"`

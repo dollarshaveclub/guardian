@@ -519,7 +519,7 @@ func (rs *RedisConfStore) GetJail(url url.URL) Jail {
 
 func (rs *RedisConfStore) FetchJailConfigs() []JailConfig {
 	c := rs.pipelinedFetchConf()
-	configs := make([]JailConfig, len(c.jailsByName))
+	configs := make([]JailConfig, 0, len(c.jailsByName))
 	for _, config := range c.jailsByName {
 		configs = append(configs, config)
 	}
@@ -647,7 +647,7 @@ func (rs *RedisConfStore) GetRouteRateLimit(url url.URL) Limit {
 
 func (rs *RedisConfStore) FetchRateLimitConfigs() []RateLimitConfig {
 	c := rs.pipelinedFetchConf()
-	configs := make([]RateLimitConfig, len(c.rateLimitsByName))
+	configs := make([]RateLimitConfig, 0, len(c.rateLimitsByName))
 	for _, config := range c.rateLimitsByName {
 		configs = append(configs, config)
 	}
