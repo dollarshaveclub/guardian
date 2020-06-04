@@ -514,7 +514,11 @@ func (rs *RedisConfStore) GetJail(url url.URL) Jail {
 	if rs.conf.useDeprecatedJail[url] {
 		return rs.conf.jails[url]
 	}
-	return rs.conf.jailsByURL[url].Spec.Jail
+	conf, ok := rs.conf.jailsByURL[url]
+	if !ok {
+		return Jail{}
+	}
+	return conf.Spec.Jail
 }
 
 func (rs *RedisConfStore) FetchJailConfigs() []JailConfig {
@@ -642,7 +646,11 @@ func (rs *RedisConfStore) GetRouteRateLimit(url url.URL) Limit {
 	if rs.conf.useDeprecatedRouteRateLimit[url] {
 		return rs.conf.routeRateLimits[url]
 	}
-	return rs.conf.rateLimitsByURL[url].Spec.Limit
+	conf, ok := rs.conf.rateLimitsByURL[url]
+	if !ok {
+		return Limit{}
+	}
+	return conf.Spec.Limit
 }
 
 func (rs *RedisConfStore) FetchRateLimitConfigs() []RateLimitConfig {
@@ -739,10 +747,7 @@ func (rs *RedisConfStore) SetLimitDeprecated(limit Limit) error {
 	pipe.Set(redisUseDeprecatedLimitKey, "true", 0)
 
 	_, err := pipe.Exec()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig) error {

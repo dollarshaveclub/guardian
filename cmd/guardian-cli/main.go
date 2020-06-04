@@ -24,7 +24,7 @@ func main() {
 
 	// Configuration
 	applyCmd := app.Command("apply", "Apply configuration resources from a YAML file")
-	applyConfigFilePaths := applyCmd.Arg("config-file", "Path to configuration file").Required().Strings()
+	applyConfigFilePaths := applyCmd.Arg("config-file", "Path to configuration file (if omitted, configuration is read from stdin)").Strings()
 
 	// Getting configuration data
 	getCmd := app.Command("get", "Get configuration resources of a certain kind")
@@ -101,7 +101,7 @@ func main() {
 
 	switch selectedCmd {
 	case applyCmd.FullCommand():
-		err := applyConfig(redisConfStore, *applyConfigFilePaths, logger)
+		err := applyConfigs(redisConfStore, *applyConfigFilePaths, logger)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error applying configuration: %v\n", err)
 			os.Exit(1)
@@ -272,73 +272,83 @@ func main() {
 	}
 }
 
-func applyConfig(store *guardian.RedisConfStore, configFilePaths []string, logger logrus.FieldLogger) error {
-	for _, configFilePath := range configFilePaths {
-		var r io.Reader
-		if configFilePath == "-" {
-			r = os.Stdin
-		} else {
-			file, err := os.Open(configFilePath)
-			if err != nil {
-				return fmt.Errorf("error opening config file: %v", err)
-			}
-			defer file.Close()
-			r = file
+func applyConfigFromReader(store *guardian.RedisConfStore, r io.Reader, logger logrus.FieldLogger) error {
+	dec := yaml.NewDecoder(r)
+	for {
+		var config struct {
+			guardian.ConfigMetadata `yaml:",inline"`
+			Spec                    interface{} `yaml:"spec"`
 		}
-		dec := yaml.NewDecoder(r)
-		for {
-			var config struct {
-				guardian.ConfigMetadata `yaml:",inline"`
-				Spec                    interface{} `yaml:"spec"`
-			}
-			err := dec.Decode(&config)
+		err := dec.Decode(&config)
+		if err != nil {
 			if err == io.EOF { // No more YAML documents to read
 				break
-			} else if err != nil {
-				return fmt.Errorf("error decoding yaml: %v", err)
 			}
-			configYaml, err := yaml.Marshal(&config)
-			if err != nil {
-				return fmt.Errorf("error marshaling yaml: %v", err)
-			}
-			switch config.Kind {
-			case guardian.GlobalRateLimitConfigKind:
-				config := guardian.GlobalRateLimitConfig{}
-				if err := yaml.Unmarshal(configYaml, &config); err != nil {
-					return fmt.Errorf("error unmarshaling yaml: %v", err)
-				}
-				if err := applyGlobalRateLimitConfig(store, config); err != nil {
-					return err
-				}
-			case guardian.RateLimitConfigKind:
-				config := guardian.RateLimitConfig{}
-				if err := yaml.Unmarshal(configYaml, &config); err != nil {
-					return fmt.Errorf("error unmarshaling yaml: %v", err)
-				}
-				if err := applyRateLimitConfig(store, config); err != nil {
-					return err
-				}
-			case guardian.JailConfigKind:
-				config := guardian.JailConfig{}
-				if err := yaml.Unmarshal(configYaml, &config); err != nil {
-					return fmt.Errorf("error unmarshaling yaml: %v", err)
-				}
-				if err := applyJailConfig(store, config); err != nil {
-					return err
-				}
-			case guardian.GlobalSettingsConfigKind:
-				config := guardian.GlobalSettingsConfig{}
-				err = yaml.Unmarshal(configYaml, &config)
-				if err != nil {
-					return fmt.Errorf("error unmarshaling yaml: %v", err)
-				}
-				if err := applyGlobalSettingsConfig(store, config); err != nil {
-					return err
-				}
-			default:
-				return fmt.Errorf("unrecognized config file kind: %v", config.Kind)
-			}
+			return fmt.Errorf("error decoding yaml: %v", err)
 		}
+		configYaml, err := yaml.Marshal(&config)
+		if err != nil {
+			return fmt.Errorf("error marshaling yaml: %v", err)
+		}
+		switch config.Kind {
+		case guardian.GlobalRateLimitConfigKind:
+			config := guardian.GlobalRateLimitConfig{}
+			if err := yaml.Unmarshal(configYaml, &config); err != nil {
+				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			}
+			if err := applyGlobalRateLimitConfig(store, config); err != nil {
+				return err
+			}
+		case guardian.RateLimitConfigKind:
+			config := guardian.RateLimitConfig{}
+			if err := yaml.Unmarshal(configYaml, &config); err != nil {
+				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			}
+			if err := applyRateLimitConfig(store, config); err != nil {
+				return err
+			}
+		case guardian.JailConfigKind:
+			config := guardian.JailConfig{}
+			if err := yaml.Unmarshal(configYaml, &config); err != nil {
+				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			}
+			if err := applyJailConfig(store, config); err != nil {
+				return err
+			}
+		case guardian.GlobalSettingsConfigKind:
+			config := guardian.GlobalSettingsConfig{}
+			err = yaml.Unmarshal(configYaml, &config)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			}
+			if err := applyGlobalSettingsConfig(store, config); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unrecognized config file kind: %v", config.Kind)
+		}
+	}
+	return nil
+}
+
+func applyConfigs(store *guardian.RedisConfStore, configFilePaths []string, logger logrus.FieldLogger) error {
+	if len(configFilePaths) == 0 {
+		err := applyConfigFromReader(store, os.Stdin, logger)
+		if err != nil {
+			return fmt.Errorf("error applying config from stdin: %v", err)
+		}
+	}
+	for _, configFilePath := range configFilePaths {
+		file, err := os.Open(configFilePath)
+		if err != nil {
+			return fmt.Errorf("error opening config file: %v", err)
+		}
+		defer file.Close()
+		err = applyConfigFromReader(store, file, logger)
+		if err != nil {
+			return fmt.Errorf("error applying config file %v: %v", configFilePath, err)
+		}
+
 	}
 	return nil
 }
