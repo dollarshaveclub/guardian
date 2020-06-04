@@ -194,9 +194,9 @@ func main() {
 			os.Exit(1)
 		}
 		config := guardian.RouteRateLimitConfigDeprecated{}
-		for url, limit := range routeRateLimits {
+		for path, limit := range routeRateLimits {
 			entry := guardian.RouteRateLimitConfigEntryDeprecated{
-				Route: url.EscapedPath(),
+				Route: path,
 				Limit: limit,
 			}
 			config.RouteRateLimits = append(config.RouteRateLimits, entry)
@@ -241,10 +241,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get Jail instead\n", getJailsCmd.FullCommand())
 		jails, err := getJailsDeprecated(redisConfStore)
 		config := guardian.JailConfigDeprecated{}
-		for u, j := range jails {
+		for path, jail := range jails {
 			entry := guardian.JailConfigEntryDeprecated{
-				Route: u.EscapedPath(),
-				Jail:  j,
+				Route: path,
+				Jail:  jail,
 			}
 			config.Jails = append(config.Jails, entry)
 		}
@@ -557,7 +557,7 @@ func getReportOnlyDeprecated(store *guardian.RedisConfStore) (bool, error) {
 	return store.FetchReportOnlyDeprecated()
 }
 
-func getRouteRateLimitsDeprecated(store *guardian.RedisConfStore) (map[url.URL]guardian.Limit, error) {
+func getRouteRateLimitsDeprecated(store *guardian.RedisConfStore) (map[string]guardian.Limit, error) {
 	return store.FetchRouteRateLimitsDeprecated()
 }
 
@@ -574,7 +574,7 @@ func removeRouteRateLimitsDeprecated(store *guardian.RedisConfStore, routes stri
 }
 
 func setRouteRateLimitsDeprecated(store *guardian.RedisConfStore, configFilePath string) error {
-	routeRateLimits := make(map[url.URL]guardian.Limit)
+	routeRateLimits := make(map[string]guardian.Limit)
 	content, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		return fmt.Errorf("error reading config file: %v", err)
@@ -585,11 +585,7 @@ func setRouteRateLimitsDeprecated(store *guardian.RedisConfStore, configFilePath
 		return fmt.Errorf("error unmarshaling yaml: %v", err)
 	}
 	for _, routeRateLimitEntry := range config.RouteRateLimits {
-		configuredURL, err := url.Parse(routeRateLimitEntry.Route)
-		if err != nil {
-			return fmt.Errorf("error parsing route: %v", err)
-		}
-		routeRateLimits[*configuredURL] = routeRateLimitEntry.Limit
+		routeRateLimits[routeRateLimitEntry.Route] = routeRateLimitEntry.Limit
 	}
 	return store.SetRouteRateLimitsDeprecated(routeRateLimits)
 }
@@ -627,7 +623,7 @@ func removeJailsDeprecated(store *guardian.RedisConfStore, routes string) error 
 	return store.RemoveJailsDeprecated(urls)
 }
 
-func getJailsDeprecated(store *guardian.RedisConfStore) (map[url.URL]guardian.Jail, error) {
+func getJailsDeprecated(store *guardian.RedisConfStore) (map[string]guardian.Jail, error) {
 	return store.FetchJailsDeprecated()
 }
 
