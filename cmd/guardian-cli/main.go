@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
-	"net/url"
 	"os"
 	"strings"
 
@@ -562,15 +561,11 @@ func getRouteRateLimitsDeprecated(store *guardian.RedisConfStore) (map[string]gu
 }
 
 func removeRouteRateLimitsDeprecated(store *guardian.RedisConfStore, routes string) error {
-	var urls []url.URL
-	for _, route := range strings.Split(routes, ",") {
-		unwantedURL, err := url.Parse(route)
-		if err != nil {
-			return fmt.Errorf("error parsing route: %v", err)
-		}
-		urls = append(urls, *unwantedURL)
+	var paths []string
+	for _, path := range strings.Split(routes, ",") {
+		paths = append(paths, path)
 	}
-	return store.RemoveRouteRateLimitsDeprecated(urls)
+	return store.RemoveRouteRateLimitsDeprecated(paths)
 }
 
 func setRouteRateLimitsDeprecated(store *guardian.RedisConfStore, configFilePath string) error {
@@ -591,7 +586,7 @@ func setRouteRateLimitsDeprecated(store *guardian.RedisConfStore, configFilePath
 }
 
 func setJailsDeprecated(store *guardian.RedisConfStore, configFilePath string) error {
-	jails := make(map[url.URL]guardian.Jail)
+	jails := make(map[string]guardian.Jail)
 	content, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		return fmt.Errorf("error reading config file: %v", err)
@@ -602,25 +597,14 @@ func setJailsDeprecated(store *guardian.RedisConfStore, configFilePath string) e
 		return fmt.Errorf("error unmarshaling yaml: %v", err)
 	}
 	for _, jailEntry := range config.Jails {
-		configuredURL, err := url.Parse(jailEntry.Route)
-		if err != nil {
-			return fmt.Errorf("error parsing route: %v", err)
-		}
-		jails[*configuredURL] = jailEntry.Jail
+		jails[jailEntry.Route] = jailEntry.Jail
 	}
 	return store.SetJailsDeprecated(jails)
 }
 
 func removeJailsDeprecated(store *guardian.RedisConfStore, routes string) error {
-	var urls []url.URL
-	for _, route := range strings.Split(routes, ",") {
-		unwantedURL, err := url.Parse(route)
-		if err != nil {
-			return fmt.Errorf("error parsing route: %v", err)
-		}
-		urls = append(urls, *unwantedURL)
-	}
-	return store.RemoveJailsDeprecated(urls)
+	paths := strings.Split(routes, ",")
+	return store.RemoveJailsDeprecated(paths)
 }
 
 func getJailsDeprecated(store *guardian.RedisConfStore) (map[string]guardian.Jail, error) {

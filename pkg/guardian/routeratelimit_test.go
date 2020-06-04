@@ -1,7 +1,6 @@
 package guardian
 
 import (
-	"net/url"
 	"reflect"
 	"testing"
 	"time"
@@ -9,8 +8,8 @@ import (
 
 func TestRouteLimitProvider(t *testing.T) {
 	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
-	route := url.URL{Path: "/foo/bar"}
-	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
+	route := "/foo/bar"
+	routeLimits := map[string]Limit{route: fooBarRouteLimit}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
@@ -52,8 +51,8 @@ func TestRouteLimitProvider(t *testing.T) {
 
 func TestRouteLimitProviderUpdates(t *testing.T) {
 	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
-	route := url.URL{Path: "/foo/bar"}
-	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
+	route := "/foo/bar"
+	routeLimits := map[string]Limit{route: fooBarRouteLimit}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
@@ -69,7 +68,7 @@ func TestRouteLimitProviderUpdates(t *testing.T) {
 
 	fooBarRouteLimit = Limit{Count: 43, Duration: time.Minute, Enabled: true}
 
-	newRouteLimits := map[url.URL]Limit{route: fooBarRouteLimit}
+	newRouteLimits := map[string]Limit{route: fooBarRouteLimit}
 	cs.SetRouteRateLimitsDeprecated(newRouteLimits)
 	cs.UpdateCachedConf()
 

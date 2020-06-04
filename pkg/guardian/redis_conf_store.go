@@ -446,13 +446,9 @@ func (rs *RedisConfStore) ApplyJailConfig(config JailConfig) error {
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	url, err := url.Parse(config.Spec.Conditions.Path)
-	if err != nil {
-		return fmt.Errorf("error parsing path: %v", err)
-	}
 	pipe := rs.redis.TxPipeline()
 	pipe.HSet(redisJailsConfigKey, config.Name, string(configBytes))
-	pipe.HSet(redisUseDeprecatedJailsKey, url.EscapedPath(), "false")
+	pipe.HSet(redisUseDeprecatedJailsKey, config.Spec.Conditions.Path, "false")
 
 	_, err = pipe.Exec()
 	if err != nil {
@@ -461,20 +457,19 @@ func (rs *RedisConfStore) ApplyJailConfig(config JailConfig) error {
 	return nil
 }
 
-func (rs *RedisConfStore) SetJailsDeprecated(jails map[url.URL]Jail) error {
-	for url, jail := range jails {
-		route := url.EscapedPath()
+func (rs *RedisConfStore) SetJailsDeprecated(jails map[string]Jail) error {
+	for path, jail := range jails {
 		limitCountStr := strconv.FormatUint(jail.Limit.Count, 10)
 		limitDurationStr := jail.Limit.Duration.String()
 		limitEnabledStr := strconv.FormatBool(jail.Limit.Enabled)
 		jailBanDuration := jail.BanDuration.String()
 
 		pipe := rs.redis.TxPipeline()
-		pipe.HSet(redisJailLimitsCountKey, route, limitCountStr)
-		pipe.HSet(redisJailLimitsDurationKey, route, limitDurationStr)
-		pipe.HSet(redisJailLimitsEnabledKey, route, limitEnabledStr)
-		pipe.HSet(redisJailBanDurationKey, route, jailBanDuration)
-		pipe.HSet(redisUseDeprecatedJailsKey, route, "true")
+		pipe.HSet(redisJailLimitsCountKey, path, limitCountStr)
+		pipe.HSet(redisJailLimitsDurationKey, path, limitDurationStr)
+		pipe.HSet(redisJailLimitsEnabledKey, path, limitEnabledStr)
+		pipe.HSet(redisJailBanDurationKey, path, jailBanDuration)
+		pipe.HSet(redisUseDeprecatedJailsKey, path, "true")
 		_, err := pipe.Exec()
 		if err != nil {
 			return err
@@ -488,19 +483,18 @@ func (rs *RedisConfStore) DeleteJailConfig(name string) error {
 	return rs.redis.HDel(redisJailsConfigKey, name).Err()
 }
 
-func (rs *RedisConfStore) RemoveJailsDeprecated(urls []url.URL) error {
-	for _, url := range urls {
-		route := url.EscapedPath()
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsCountKey, route)
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsDurationKey, route)
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsEnabledKey, route)
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailBanDurationKey, route)
+func (rs *RedisConfStore) RemoveJailsDeprecated(paths []string) error {
+	for _, path := range paths {
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsCountKey, path)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsDurationKey, path)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailLimitsEnabledKey, path)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisJailBanDurationKey, path)
 
 		pipe := rs.redis.TxPipeline()
-		pipe.HDel(redisJailLimitsCountKey, route)
-		pipe.HDel(redisJailLimitsDurationKey, route)
-		pipe.HDel(redisJailLimitsEnabledKey, route)
-		pipe.HDel(redisJailBanDurationKey, route)
+		pipe.HDel(redisJailLimitsCountKey, path)
+		pipe.HDel(redisJailLimitsDurationKey, path)
+		pipe.HDel(redisJailLimitsEnabledKey, path)
+		pipe.HDel(redisJailBanDurationKey, path)
 		_, err := pipe.Exec()
 		if err != nil {
 			return err
@@ -577,13 +571,9 @@ func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
-	url, err := url.Parse(config.Spec.Conditions.Path)
-	if err != nil {
-		return fmt.Errorf("error parsing path: %v", err)
-	}
 	pipe := rs.redis.TxPipeline()
 	pipe.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes))
-	pipe.HSet(redisUseDeprecatedRouteRateLimitsKey, url.EscapedPath(), "false")
+	pipe.HSet(redisUseDeprecatedRouteRateLimitsKey, config.Spec.Conditions.Path, "false")
 	_, err = pipe.Exec()
 	if err != nil {
 		return err
@@ -620,17 +610,16 @@ func (rs *RedisConfStore) DeleteRateLimitConfig(name string) error {
 // RemoveRouteRateLimitsDeprecated will iterate through the slice and delete the limit for each route.
 // If one of the routes has not be set in the conf store, it will be treated by Redis as an empty hash and it will effectively be a no-op.
 // This function will continue to iterate through the slice and delete the remaining routes contained in the slice.
-func (rs *RedisConfStore) RemoveRouteRateLimitsDeprecated(urls []url.URL) error {
-	for _, url := range urls {
-		route := url.EscapedPath()
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsCountKey, route)
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsDurationKey, route)
-		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsEnabledKey, route)
+func (rs *RedisConfStore) RemoveRouteRateLimitsDeprecated(paths []string) error {
+	for _, path := range paths {
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsCountKey, path)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsDurationKey, path)
+		rs.logger.Debugf("Sending HDel for key %v field %v", redisRouteRateLimitsEnabledKey, path)
 
 		pipe := rs.redis.TxPipeline()
-		pipe.HDel(redisRouteRateLimitsCountKey, route)
-		pipe.HDel(redisRouteRateLimitsDurationKey, route)
-		pipe.HDel(redisRouteRateLimitsEnabledKey, route)
+		pipe.HDel(redisRouteRateLimitsCountKey, path)
+		pipe.HDel(redisRouteRateLimitsDurationKey, path)
+		pipe.HDel(redisRouteRateLimitsEnabledKey, path)
 		_, err := pipe.Exec()
 		if err != nil {
 			return err

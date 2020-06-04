@@ -83,16 +83,15 @@ func TestConfStoreFetchesSets(t *testing.T) {
 	expectedBlacklist := parseCIDRs([]string{"12.0.0.1/8"})
 	expectedLimit := Limit{Count: 20, Duration: time.Second, Enabled: true}
 	expectedReportOnly := true
-	fooBarURL, _ := url.Parse("/foo/bar")
-	expectedRouteRateLimits := map[url.URL]Limit{
-		*fooBarURL: Limit{
+	expectedRouteRateLimits := map[string]Limit{
+		"/foo/bar": Limit{
 			Count:    5,
 			Duration: time.Second,
 			Enabled:  true,
 		},
 	}
-	expectedJails := map[url.URL]Jail{
-		*fooBarURL: {
+	expectedJails := map[string]Jail{
+		"/foo/bar": {
 			Limit: Limit{
 				Count:    10,
 				Duration: time.Minute,
@@ -338,30 +337,31 @@ func TestConfStoreRemoveBlacklistCidr(t *testing.T) {
 func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
+
+	fooBarPath := "/foo/bar"
 	fooBarLimit := Limit{
 		Count:    5,
 		Duration: time.Second,
 		Enabled:  true,
 	}
 
-	fooBazURL, _ := url.Parse("/foo/baz")
+	fooBazPath := "/foo/baz"
 	fooBazLimit := Limit{
 		Count:    3,
 		Duration: time.Second,
 		Enabled:  false,
 	}
 
-	routeRateLimits := map[url.URL]Limit{
-		*fooBarURL: fooBarLimit,
-		*fooBazURL: fooBazLimit,
+	routeRateLimits := map[string]Limit{
+		fooBarPath: fooBarLimit,
+		fooBazPath: fooBazLimit,
 	}
 
 	if err := c.SetRouteRateLimitsDeprecated(routeRateLimits); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchRouteRateLimitDeprecated(*fooBarURL)
+	got, err := c.FetchRouteRateLimitDeprecated(fooBarPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -372,19 +372,20 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 
 	// Ensure configuration cache is updated after a confSyncInterval
 	c.UpdateCachedConf()
+	fooBarURL, _ := url.Parse(fooBarPath)
 	cachedItem := c.GetRouteRateLimit(*fooBarURL)
 	if !cmp.Equal(cachedItem, fooBarLimit) {
 		t.Errorf("expected: %v, received: %v", fooBarLimit, cachedItem)
 	}
 
-	var urls []url.URL
-	urls = append(urls, *fooBarURL)
-	if err := c.RemoveRouteRateLimitsDeprecated(urls); err != nil {
+	var paths []string
+	paths = append(paths, fooBarPath)
+	if err := c.RemoveRouteRateLimitsDeprecated(paths); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err = c.FetchRouteRateLimitDeprecated(*fooBarURL)
+	got, err = c.FetchRouteRateLimitDeprecated(fooBarPath)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
 	}
@@ -396,7 +397,7 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", Limit{}, cachedItem)
 	}
 
-	got, err = c.FetchRouteRateLimitDeprecated(*fooBazURL)
+	got, err = c.FetchRouteRateLimitDeprecated(fooBazPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -409,9 +410,10 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 func TestConfStoreSetExistingRoute(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
-	originalRouteRateLimit := map[url.URL]Limit{
-		*fooBarURL: Limit{
+
+	fooBarPath := "/foo/bar"
+	originalRouteRateLimit := map[string]Limit{
+		fooBarPath: Limit{
 			Count:    5,
 			Duration: time.Second,
 			Enabled:  true,
@@ -428,14 +430,14 @@ func TestConfStoreSetExistingRoute(t *testing.T) {
 		Enabled:  true,
 	}
 
-	newRouteRateLimit := map[url.URL]Limit{
-		*fooBarURL: newLimit,
+	newRouteRateLimit := map[string]Limit{
+		fooBarPath: newLimit,
 	}
 	if err := c.SetRouteRateLimitsDeprecated(newRouteRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchRouteRateLimitDeprecated(*fooBarURL)
+	got, err := c.FetchRouteRateLimitDeprecated(fooBarPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -448,43 +450,43 @@ func TestConfStoreSetExistingRoute(t *testing.T) {
 func TestConfStoreRemoveNonexistentRoute(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
+	fooBarPath := "/foo/bar"
 	fooBarLimit := Limit{
 		Count:    5,
 		Duration: time.Second,
 		Enabled:  true,
 	}
 
-	fooBazURL, _ := url.Parse("/foo/baz")
+	fooBazPath := "/foo/baz"
 	fooBazLimit := Limit{
 		Count:    3,
 		Duration: time.Second,
 		Enabled:  false,
 	}
 
-	routeRateLimits := map[url.URL]Limit{
-		*fooBarURL: fooBarLimit,
-		*fooBazURL: fooBazLimit,
+	routeRateLimits := map[string]Limit{
+		fooBarPath: fooBarLimit,
+		fooBazPath: fooBazLimit,
 	}
 
 	if err := c.SetRouteRateLimitsDeprecated(routeRateLimits); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	var urls []url.URL
-	nonExistentURL, _ := url.Parse("/foo/foo")
-	urls = append(urls, *nonExistentURL, *fooBarURL)
-	if err := c.RemoveRouteRateLimitsDeprecated(urls); err != nil {
+	var paths []string
+	nonExistentPath := "/foo/foo"
+	paths = append(paths, nonExistentPath, fooBarPath)
+	if err := c.RemoveRouteRateLimitsDeprecated(paths); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err := c.FetchRouteRateLimitDeprecated(*fooBarURL)
+	got, err := c.FetchRouteRateLimitDeprecated(fooBarPath)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
 	}
 
-	got, err = c.FetchRouteRateLimitDeprecated(*fooBazURL)
+	got, err = c.FetchRouteRateLimitDeprecated(fooBazPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -498,7 +500,7 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	fooBarURL, _ := url.Parse("/foo/bar")
+	fooBarPath := "/foo/bar"
 	fooBarJail := Jail{
 		Limit: Limit{
 			Count:    5,
@@ -508,7 +510,7 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		BanDuration: time.Hour,
 	}
 
-	fooBazURL, _ := url.Parse("/foo/baz")
+	fooBazPath := "/foo/baz"
 	fooBazJail := Jail{
 		Limit: Limit{
 			Count:    3,
@@ -518,16 +520,16 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		BanDuration: time.Hour,
 	}
 
-	jails := map[url.URL]Jail{
-		*fooBarURL: fooBarJail,
-		*fooBazURL: fooBazJail,
+	jails := map[string]Jail{
+		fooBarPath: fooBarJail,
+		fooBazPath: fooBazJail,
 	}
 
 	if err := c.SetJailsDeprecated(jails); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchJailDeprecated(*fooBarURL)
+	got, err := c.FetchJailDeprecated(fooBarPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -536,6 +538,7 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", fooBarJail, got)
 	}
 
+	fooBarURL, _ := url.Parse(fooBarPath)
 	// Ensure configuration cache is updated after a confSyncInterval
 	c.UpdateCachedConf()
 	cachedItem := c.GetJail(*fooBarURL)
@@ -543,14 +546,14 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", fooBarJail, cachedItem)
 	}
 
-	var urls []url.URL
-	urls = append(urls, *fooBarURL)
-	if err := c.RemoveJailsDeprecated(urls); err != nil {
+	var paths []string
+	paths = append(paths, fooBarPath)
+	if err := c.RemoveJailsDeprecated(paths); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err = c.FetchJailDeprecated(*fooBarURL)
+	got, err = c.FetchJailDeprecated(fooBarPath)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
 	}
@@ -562,7 +565,7 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", Jail{}, cachedItem)
 	}
 
-	got, err = c.FetchJailDeprecated(*fooBazURL)
+	got, err = c.FetchJailDeprecated(fooBazPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -576,7 +579,7 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	fooBarURL, _ := url.Parse("/foo/bar")
+	fooBarPath := "/foo/bar"
 	fooBarJail := Jail{
 		Limit: Limit{
 			Count:    5,
@@ -586,7 +589,7 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 		BanDuration: time.Hour,
 	}
 
-	jails := map[url.URL]Jail{*fooBarURL: fooBarJail}
+	jails := map[string]Jail{fooBarPath: fooBarJail}
 
 	if err := c.SetJailsDeprecated(jails); err != nil {
 		t.Fatalf("got error: %v", err)
@@ -601,14 +604,14 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 		BanDuration: time.Minute,
 	}
 
-	newJails := map[url.URL]Jail{
-		*fooBarURL: newJail,
+	newJails := map[string]Jail{
+		fooBarPath: newJail,
 	}
 	if err := c.SetJailsDeprecated(newJails); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchJailDeprecated(*fooBarURL)
+	got, err := c.FetchJailDeprecated(fooBarPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
