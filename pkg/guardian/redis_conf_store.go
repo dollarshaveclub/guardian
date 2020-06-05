@@ -229,25 +229,25 @@ type JailSpec struct {
 // GlobalRateLimitConfig represents a resource that configures the global rate limit
 type GlobalRateLimitConfig struct {
 	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           GlobalRateLimitSpec `yaml:"spec" json:"spec"`
+	Spec           GlobalRateLimitSpec `yaml:"globalRateLimitSpec" json:"globalRateLimitSpec"`
 }
 
 // RateLimitConfig represents a resource that configures a conditional rate limit
 type RateLimitConfig struct {
 	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           RateLimitSpec `yaml:"spec" json:"spec"`
+	Spec           RateLimitSpec `yaml:"rateLimitSpec" json:"rateLimitSpec"`
 }
 
 // JailConfig represents a resource that configures a jail
 type JailConfig struct {
 	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           JailSpec `yaml:"spec" json:"spec"`
+	Spec           JailSpec `yaml:"jailSpec" json:"jailSpec"`
 }
 
 // GlobalSettingsConfig represents a resource that configures global settings
 type GlobalSettingsConfig struct {
 	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           GlobalSettingsSpec `yaml:"spec" json:"spec"`
+	Spec           GlobalSettingsSpec `yaml:"globalSettingsSpec" json:"globalSettingsSpec"`
 }
 
 // JailConfigEntryDeprecated represents an entry in the jail configuration format

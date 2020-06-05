@@ -276,7 +276,10 @@ func applyConfigFromReader(store *guardian.RedisConfStore, r io.Reader, logger l
 	for {
 		var config struct {
 			guardian.ConfigMetadata `yaml:",inline"`
-			Spec                    interface{} `yaml:"spec"`
+			GlobalRateLimitSpec     *guardian.GlobalRateLimitSpec `yaml:"globalRateLimitSpec"`
+			GlobalSettingsSpec      *guardian.GlobalSettingsSpec  `yaml:"globalSettingsSpec"`
+			RateLimitSpec           *guardian.RateLimitSpec       `yaml:"rateLimitSpec"`
+			JailSpec                *guardian.JailSpec            `yaml:"jailSpec"`
 		}
 		err := dec.Decode(&config)
 		if err != nil {
@@ -285,42 +288,49 @@ func applyConfigFromReader(store *guardian.RedisConfStore, r io.Reader, logger l
 			}
 			return fmt.Errorf("error decoding yaml: %v", err)
 		}
-		configYaml, err := yaml.Marshal(&config)
-		if err != nil {
-			return fmt.Errorf("error marshaling yaml: %v", err)
-		}
 		switch config.Kind {
 		case guardian.GlobalRateLimitConfigKind:
-			config := guardian.GlobalRateLimitConfig{}
-			if err := yaml.Unmarshal(configYaml, &config); err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			if config.GlobalRateLimitSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			}
+			config := guardian.GlobalRateLimitConfig{
+				ConfigMetadata: config.ConfigMetadata,
+				Spec:           *config.GlobalRateLimitSpec,
 			}
 			if err := applyGlobalRateLimitConfig(store, config); err != nil {
 				return err
 			}
+		case guardian.GlobalSettingsConfigKind:
+			if config.GlobalSettingsSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			}
+			config := guardian.GlobalSettingsConfig{
+				ConfigMetadata: config.ConfigMetadata,
+				Spec:           *config.GlobalSettingsSpec,
+			}
+			if err := applyGlobalSettingsConfig(store, config); err != nil {
+				return err
+			}
 		case guardian.RateLimitConfigKind:
-			config := guardian.RateLimitConfig{}
-			if err := yaml.Unmarshal(configYaml, &config); err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			if config.RateLimitSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			}
+			config := guardian.RateLimitConfig{
+				ConfigMetadata: config.ConfigMetadata,
+				Spec:           *config.RateLimitSpec,
 			}
 			if err := applyRateLimitConfig(store, config); err != nil {
 				return err
 			}
 		case guardian.JailConfigKind:
-			config := guardian.JailConfig{}
-			if err := yaml.Unmarshal(configYaml, &config); err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
+			if config.JailSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			}
+			config := guardian.JailConfig{
+				ConfigMetadata: config.ConfigMetadata,
+				Spec:           *config.JailSpec,
 			}
 			if err := applyJailConfig(store, config); err != nil {
-				return err
-			}
-		case guardian.GlobalSettingsConfigKind:
-			config := guardian.GlobalSettingsConfig{}
-			err = yaml.Unmarshal(configYaml, &config)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling yaml: %v", err)
-			}
-			if err := applyGlobalSettingsConfig(store, config); err != nil {
 				return err
 			}
 		default:

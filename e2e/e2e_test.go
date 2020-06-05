@@ -219,7 +219,7 @@ func TestJails(t *testing.T) {
 			}
 		}
 		if config.Spec.Limit.Enabled {
-			t.Logf("sleeping for ban_duration: %v + 2 seconds to ensure the prisoner is removed", config.Spec.BanDuration)
+			t.Logf("sleeping for banDuration: %v + 2 seconds to ensure the prisoner is removed", config.Spec.BanDuration)
 			time.Sleep(config.Spec.BanDuration)
 			time.Sleep(2 * time.Second) // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
 			res := GET(t, "192.168.1.43", config.Spec.Conditions.Path)
@@ -408,7 +408,7 @@ func TestJailsDeprecated(t *testing.T) {
 			}
 		}
 		if j.Jail.Limit.Enabled {
-			t.Logf("sleeping for ban_duration: %v + 2 seconds to ensure the prisoner is removed", j.Jail.BanDuration)
+			t.Logf("sleeping for banDuration: %v + 2 seconds to ensure the prisoner is removed", j.Jail.BanDuration)
 			time.Sleep(j.Jail.BanDuration)
 			time.Sleep(2 * time.Second) // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
 			res := GET(t, "192.168.1.43", j.Route)
