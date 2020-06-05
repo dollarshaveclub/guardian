@@ -575,10 +575,7 @@ func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
 	pipe.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes))
 	pipe.HSet(redisUseDeprecatedRouteRateLimitsKey, config.Spec.Conditions.Path, "false")
 	_, err = pipe.Exec()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // SetRouteRateLimitsDeprecated set the limit for each route.
@@ -692,10 +689,7 @@ func (rs *RedisConfStore) ApplyGlobalRateLimitConfig(config GlobalRateLimitConfi
 	pipe.Set(redisUseDeprecatedLimitKey, "false", 0)
 
 	_, err = pipe.Exec()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (rs *RedisConfStore) GetLimit() Limit {
@@ -749,10 +743,7 @@ func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig)
 	pipe.Set(redisUseDeprecatedReportOnlyKey, "false", 0)
 
 	_, err = pipe.Exec()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (rs *RedisConfStore) GetReportOnly() bool {
@@ -760,15 +751,14 @@ func (rs *RedisConfStore) GetReportOnly() bool {
 	defer rs.conf.RUnlock()
 	if rs.conf.useDeprecatedReportOnly {
 		return rs.conf.reportOnly
-	} else {
-		return rs.conf.globalSettings.Spec.ReportOnly
 	}
+	return rs.conf.globalSettings.Spec.ReportOnly
 }
 
 func (rs *RedisConfStore) FetchGlobalSettingsConfig() (GlobalSettingsConfig, error) {
 	c := rs.pipelinedFetchConf()
 	if c.globalSettings == nil {
-		return GlobalSettingsConfig{}, fmt.Errorf("error fetching global rate limit config")
+		return GlobalSettingsConfig{}, fmt.Errorf("error fetching global settings config")
 	}
 	return *c.globalSettings, nil
 }
@@ -1183,7 +1173,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 
 	if globalSettingsBytes, err := globalSettingsCmd.Bytes(); err == nil {
 		config := GlobalSettingsConfig{}
-		if err := json.Unmarshal(globalSettingsBytes, &config); err != nil {
+		if err := json.Unmarshal(globalSettingsBytes, &config); err == nil {
 			if config.Version == GlobalSettingsConfigVersion {
 				newConf.globalSettings = &config
 			} else {
@@ -1204,6 +1194,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		config := RateLimitConfig{}
 		if err := json.Unmarshal([]byte(configString), &config); err == nil {
 			if config.Version == RateLimitConfigVersion {
+				newConf.rateLimitsByName[name] = config
 				newConf.rateLimitsByPath[config.Spec.Conditions.Path] = config
 			} else {
 				rs.logger.Warnf(
@@ -1222,8 +1213,7 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 		if err := json.Unmarshal([]byte(configString), &config); err == nil {
 			if config.Version == JailConfigVersion {
 				newConf.jailsByName[name] = config
-				path := config.Spec.Conditions.Path
-				newConf.jailsByPath[path] = config
+				newConf.jailsByPath[config.Spec.Conditions.Path] = config
 			} else {
 				rs.logger.Warnf(
 					"stored jail config version %v does not match current version %v; skipping",

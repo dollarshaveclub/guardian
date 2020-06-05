@@ -376,23 +376,28 @@ func getConfig(store *guardian.RedisConfStore, configKind string, logger logrus.
 		fmt.Println(string(configYaml))
 	case guardian.RateLimitConfigKind:
 		configs := store.FetchRateLimitConfigs()
-		for _, config := range configs {
+		for i, config := range configs {
+			if i > 0 {
+				fmt.Println("---")
+			}
 			configYaml, err := yaml.Marshal(config)
 			if err != nil {
 				return fmt.Errorf("error marshaling yaml: %v", err)
 			}
 			fmt.Println(string(configYaml))
-			fmt.Println("---")
 		}
 	case guardian.JailConfigKind:
 		configs := store.FetchJailConfigs()
-		for _, config := range configs {
+		for i, config := range configs {
+			if i > 0 {
+				fmt.Println("---")
+			}
 			configYaml, err := yaml.Marshal(config)
 			if err != nil {
 				return fmt.Errorf("error marshaling yaml: %v", err)
 			}
 			fmt.Println(string(configYaml))
-			fmt.Println("---")
+
 		}
 	}
 	return nil
