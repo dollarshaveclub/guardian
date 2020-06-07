@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -587,10 +588,28 @@ func GET(t *testing.T, sourceIP string, path string) *http.Response {
 	return res
 }
 
+type redisDBIndex struct {
+	Index int
+	Mutex *sync.Mutex
+}
+
+var currentRedisDBIndex = redisDBIndex{
+	Index: 0,
+	Mutex: &sync.Mutex{},
+}
+
 func resetRedis(redisAddr string) {
+	currentRedisDBIndex.Mutex.Lock()
 	redisOpts := &redis.Options{
 		Addr: redisAddr,
+		DB:   currentRedisDBIndex.Index,
 	}
+	currentRedisDBIndex.Index += 1
+	maxDBIndex := 15
+	if currentRedisDBIndex.Index > maxDBIndex {
+		currentRedisDBIndex.Index = 0
+	}
+	currentRedisDBIndex.Mutex.Unlock()
 
 	redis := redis.NewClient(redisOpts)
 	redis.FlushAll()
