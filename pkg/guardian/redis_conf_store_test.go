@@ -193,14 +193,7 @@ func TestConfStoreFetchesSets(t *testing.T) {
 	}
 
 	gotRateLimits := c.FetchRateLimitConfigs()
-	if err != nil {
-		t.Fatalf("got error: %v", err)
-	}
-
 	gotJails := c.FetchJailConfigs()
-	if err != nil {
-		t.Fatalf("got error: %v", err)
-	}
 
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)

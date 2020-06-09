@@ -85,13 +85,13 @@ func TestGlobalRateLimit(t *testing.T) {
 	}
 	applyGuardianConfig(t, *redisAddr, guardianConfig)
 
-	file, err := os.Open(guardianConfig.globalRateLimitConfigPath)
+	f, err := os.Open(guardianConfig.globalRateLimitConfigPath)
 	if err != nil {
 		t.Fatalf("error opening config file: %v", err)
 	}
-	defer file.Close()
+	defer f.Close()
 	config := guardian.GlobalRateLimitConfig{}
-	err = yaml.NewDecoder(file).Decode(&config)
+	err = yaml.NewDecoder(f).Decode(&config)
 	if err != nil {
 		t.Fatalf("error decoding yaml: %v", err)
 	}
@@ -127,12 +127,12 @@ func TestRateLimit(t *testing.T) {
 	}
 	applyGuardianConfig(t, *redisAddr, guardianConfig)
 
-	file, err := os.Open(guardianConfig.rateLimitConfigPath)
+	f, err := os.Open(guardianConfig.rateLimitConfigPath)
 	if err != nil {
 		t.Fatalf("error opening config file: %v", err)
 	}
-	defer file.Close()
-	dec := yaml.NewDecoder(file)
+	defer f.Close()
+	dec := yaml.NewDecoder(f)
 	for {
 		config := guardian.RateLimitConfig{}
 		err := dec.Decode(&config)
@@ -175,28 +175,29 @@ func TestJails(t *testing.T) {
 
 	applyGuardianConfig(t, *redisAddr, guardianConfig)
 
-	file, err := os.Open(guardianConfig.jailConfigPath)
+	f, err := os.Open(guardianConfig.jailConfigPath)
 	if err != nil {
 		t.Fatalf("error opening config file: %v", err)
 	}
-	defer file.Close()
-	dec := yaml.NewDecoder(file)
+	defer f.Close()
+	dec := yaml.NewDecoder(f)
 
 	// Assumes that any BanDuration in the Jail Config is greater than the time it takes
 	// to execute this particular test.
 	for {
 		config := guardian.JailConfig{}
 		err := dec.Decode(&config)
-		if err == io.EOF {
-			break
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			t.Fatalf("error decoding yaml: %v", err)
 		}
 		banned := false
 		resetRedis(*redisAddr)
 		applyGuardianConfig(t, *redisAddr, guardianConfig)
-		for i := uint64(0); i < config.Spec.Limit.Count+1; i++ {
-			if len(os.Getenv("SYNC")) == 0 {
+		for i := 0; uint64(i) <= config.Spec.Limit.Count; i++ {
+			if os.Getenv("SYNC") != "" {
 				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
 			}
 
@@ -206,7 +207,7 @@ func TestJails(t *testing.T) {
 			whitelistedRes.Body.Close()
 
 			want := 200
-			if (i >= config.Spec.Limit.Count && config.Spec.Limit.Enabled) || banned {
+			if (uint64(i) >= config.Spec.Limit.Count && config.Spec.Limit.Enabled) || banned {
 				banned = true
 				want = 429
 			}
@@ -221,8 +222,8 @@ func TestJails(t *testing.T) {
 		}
 		if config.Spec.Limit.Enabled {
 			t.Logf("sleeping for banDuration: %v + 2 seconds to ensure the prisoner is removed", config.Spec.BanDuration)
-			time.Sleep(config.Spec.BanDuration)
-			time.Sleep(2 * time.Second) // ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
+			// ensure that we sleep for an additional confUpdateInterval so that the configuration is updated
+			time.Sleep(config.Spec.BanDuration + (2 * time.Second))
 			res := GET(t, "192.168.1.43", config.Spec.Conditions.Path)
 			if res.StatusCode != 200 {
 				t.Fatalf("prisoner was never removed, received unexpected status code: %d, %v", res.StatusCode, config.Spec.Jail)
@@ -323,11 +324,11 @@ func TestRouteRateLimitDeprecated(t *testing.T) {
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
 
 	rrlConfig := guardian.RouteRateLimitConfigDeprecated{}
-	rrlConfigBytes, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
+	b, err := ioutil.ReadFile(config.routeRateLimitConfigPathDeprecated)
 	if err != nil {
 		t.Fatalf("unable to read config file: %v", err)
 	}
-	err = yaml.Unmarshal(rrlConfigBytes, &rrlConfig)
+	err = yaml.Unmarshal(b, &rrlConfig)
 	if err != nil {
 		t.Fatalf("error unmarshaling expected result string: %v", err)
 	}
@@ -420,6 +421,22 @@ func TestJailsDeprecated(t *testing.T) {
 	}
 }
 
+func routeRateLimitsEqual(rrl1, rrl2 []guardian.RouteRateLimitConfigEntryDeprecated) bool {
+	if len(rrl1) != len(rrl2) {
+		return false
+	}
+	m := make(map[guardian.RouteRateLimitConfigEntryDeprecated]struct{}, len(rrl1))
+	for i := range rrl1 {
+		m[rrl1[i]] = struct{}{}
+	}
+	for _, e := range rrl2 {
+		if _, ok := m[e]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
 	config := guardianConfig{
@@ -450,17 +467,10 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 	// Since the ordering of the slice returned from the cli can be different
 	// than the original config, we just want to verify that both configs contain
 	// the same entries in no particular order.
-	expectedResSet := make(map[string]guardian.Limit)
-	resSet := make(map[string]guardian.Limit)
-	for _, entry := range expectedRes.RouteRateLimits {
-		expectedResSet[entry.Route] = entry.Limit
-	}
-	for _, entry := range res.RouteRateLimits {
-		resSet[entry.Route] = entry.Limit
-	}
-
-	if !cmp.Equal(resSet, expectedResSet) {
-		t.Fatalf("expected: %v, received: %v", expectedResSet, resSet)
+	got := res.RouteRateLimits
+	expected := expectedRes.RouteRateLimits
+	if !routeRateLimitsEqual(got, expected) {
+		t.Fatalf("expected: %v, received: %v", expected, got)
 	}
 }
 
@@ -589,27 +599,26 @@ func GET(t *testing.T, sourceIP string, path string) *http.Response {
 }
 
 type redisDBIndex struct {
+	sync.Mutex
 	Index int
-	Mutex *sync.Mutex
 }
 
 var currentRedisDBIndex = redisDBIndex{
 	Index: 0,
-	Mutex: &sync.Mutex{},
 }
 
 func resetRedis(redisAddr string) {
-	currentRedisDBIndex.Mutex.Lock()
+	currentRedisDBIndex.Lock()
 	redisOpts := &redis.Options{
 		Addr: redisAddr,
 		DB:   currentRedisDBIndex.Index,
 	}
-	currentRedisDBIndex.Index += 1
+	currentRedisDBIndex.Index++
 	maxDBIndex := 15
 	if currentRedisDBIndex.Index > maxDBIndex {
 		currentRedisDBIndex.Index = 0
 	}
-	currentRedisDBIndex.Mutex.Unlock()
+	currentRedisDBIndex.Unlock()
 
 	redis := redis.NewClient(redisOpts)
 	redis.FlushAll()

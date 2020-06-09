@@ -127,113 +127,6 @@ type lockingConf struct {
 	conf
 }
 
-// ConfigKind identifies a kind of configuration resource
-type ConfigKind string
-
-// Config kinds
-const (
-	// GlobalRateLimitConfigKind identifies a Global Rate Limit config resource
-	GlobalRateLimitConfigKind = "GlobalRateLimit"
-	// RateLimitConfigKind identifies a Rate Limit config resource
-	RateLimitConfigKind = "RateLimit"
-	// JailConfigKind identifies a Jail config resource
-	JailConfigKind = "Jail"
-	// GlobalSettingsConfigKind identifies a Global Settings config resource
-	GlobalSettingsConfigKind = "GlobalSettings"
-)
-
-// ConfigMetadata represents metadata associated with a configuration resource.
-// Every configuration resource begins with this metadata.
-type ConfigMetadata struct {
-	// Version identifies the version of the configuration resource format
-	Version string `yaml:"version" json:"version"`
-	// Kind identifies the kind of the configuration resource
-	Kind ConfigKind `yaml:"kind" json:"kind"`
-	// Name uniquely identifies a configuration resource within the resource's Kind
-	Name string `yaml:"name" json:"name"`
-	// Description is a description to add context to a resource
-	Description string `yaml:"description" json:"description"`
-}
-
-// Conditions represents conditions required for a Limit to be applied to
-// a Request. Currently, Guardian only filters requests based on URL path,
-// via RedisConfStore.GetRouteRateLimit(url.URL) or .GetJail(url.URL)
-type Conditions struct {
-	Path string `yaml:"path" json:"path"`
-}
-
-// GlobalRateLimitSpec represents the specification for a GlobalRateLimitConfig
-type GlobalRateLimitSpec struct {
-	Limit Limit `yaml:"limit" json:"limit"`
-}
-
-// GlobalSettingsSpec represents the specification for a GlobalSettingsConfig
-type GlobalSettingsSpec struct {
-	ReportOnly bool `yaml:"reportOnly" json:"reportOnly"`
-}
-
-// RateLimitSpec represents the specification for a RateLimitConfig
-type RateLimitSpec struct {
-	Limit      Limit      `yaml:"limit" json:"limit"`
-	Conditions Conditions `yaml:"conditions" json:"conditions"`
-}
-
-// JailSpec represents the specification for a JailConfig
-type JailSpec struct {
-	Jail       `yaml:",inline" json:",inline"`
-	Conditions Conditions `yaml:"conditions" json:"conditions"`
-}
-
-// GlobalRateLimitConfig represents a resource that configures the global rate limit
-type GlobalRateLimitConfig struct {
-	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           GlobalRateLimitSpec `yaml:"globalRateLimitSpec" json:"globalRateLimitSpec"`
-}
-
-// RateLimitConfig represents a resource that configures a conditional rate limit
-type RateLimitConfig struct {
-	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           RateLimitSpec `yaml:"rateLimitSpec" json:"rateLimitSpec"`
-}
-
-// JailConfig represents a resource that configures a jail
-type JailConfig struct {
-	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           JailSpec `yaml:"jailSpec" json:"jailSpec"`
-}
-
-// GlobalSettingsConfig represents a resource that configures global settings
-type GlobalSettingsConfig struct {
-	ConfigMetadata `yaml:",inline" json:",inline"`
-	Spec           GlobalSettingsSpec `yaml:"globalSettingsSpec" json:"globalSettingsSpec"`
-}
-
-// JailConfigEntryDeprecated represents an entry in the jail configuration format
-// associated with the deprecated CLI
-type JailConfigEntryDeprecated struct {
-	Route string `yaml:"route"`
-	Jail  Jail   `yaml:"jail"`
-}
-
-// JailConfigEntryDeprecated represents the jail configuration format associated
-// with the deprecated CLI
-type JailConfigDeprecated struct {
-	Jails []JailConfigEntryDeprecated `yaml:"jails"`
-}
-
-// RouteRateLimitConfigEntryDeprecated represents an entry in the conditional
-// rate limit configuration format associated with the deprecated CLI
-type RouteRateLimitConfigEntryDeprecated struct {
-	Route string `yaml:"route"`
-	Limit Limit  `yaml:"limit"`
-}
-
-// RouteRateLimitConfigDeprecated represents the conditional rate limit
-// configuration format associated with the deprecated CLI
-type RouteRateLimitConfigDeprecated struct {
-	RouteRateLimits []RouteRateLimitConfigEntryDeprecated `yaml:"route_rate_limits"`
-}
-
 func (rs *RedisConfStore) GetWhitelist() []net.IPNet {
 	rs.conf.RLock()
 	defer rs.conf.RUnlock()
@@ -399,13 +292,13 @@ func (rs *RedisConfStore) RemoveBlacklistCidrs(cidrs []net.IPNet) error {
 	return nil
 }
 
-func (rs *RedisConfStore) ApplyJailConfig(config JailConfig) error {
-	configBytes, err := json.Marshal(config)
+func (rs *RedisConfStore) ApplyJailConfig(cfg JailConfig) error {
+	b, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
 	pipe := rs.redis.TxPipeline()
-	pipe.HSet(redisJailsConfigKey, config.Name, string(configBytes))
+	pipe.HSet(redisJailsConfigKey, cfg.Name, string(b))
 
 	_, err = pipe.Exec()
 	if err != nil {
@@ -431,29 +324,29 @@ func (rs *RedisConfStore) GetJail(url url.URL) Jail {
 
 func (rs *RedisConfStore) FetchJailConfigs() []JailConfig {
 	c := rs.pipelinedFetchConf()
-	configs := make([]JailConfig, 0, len(c.jailsByName))
-	for _, config := range c.jailsByName {
-		configs = append(configs, config)
+	cfgs := make([]JailConfig, 0, len(c.jailsByName))
+	for _, cfg := range c.jailsByName {
+		cfgs = append(cfgs, cfg)
 	}
-	return configs
+	return cfgs
 }
 
 func (rs *RedisConfStore) FetchJailConfig(name string) (JailConfig, error) {
 	c := rs.pipelinedFetchConf()
-	config, ok := c.jailsByName[name]
+	cfg, ok := c.jailsByName[name]
 	if !ok {
 		return JailConfig{}, fmt.Errorf("no jail exists with name %v", name)
 	}
-	return config, nil
+	return cfg, nil
 }
 
-func (rs *RedisConfStore) ApplyRateLimitConfig(config RateLimitConfig) error {
-	configBytes, err := json.Marshal(config)
+func (rs *RedisConfStore) ApplyRateLimitConfig(cfg RateLimitConfig) error {
+	b, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
 	pipe := rs.redis.TxPipeline()
-	pipe.HSet(redisRateLimitsConfigKey, config.Name, string(configBytes))
+	pipe.HSet(redisRateLimitsConfigKey, cfg.Name, string(b))
 	_, err = pipe.Exec()
 	return err
 }
@@ -476,29 +369,29 @@ func (rs *RedisConfStore) GetRouteRateLimit(url url.URL) Limit {
 
 func (rs *RedisConfStore) FetchRateLimitConfigs() []RateLimitConfig {
 	c := rs.pipelinedFetchConf()
-	configs := make([]RateLimitConfig, 0, len(c.rateLimitsByName))
-	for _, config := range c.rateLimitsByName {
-		configs = append(configs, config)
+	cfgs := make([]RateLimitConfig, 0, len(c.rateLimitsByName))
+	for _, cfg := range c.rateLimitsByName {
+		cfgs = append(cfgs, cfg)
 	}
-	return configs
+	return cfgs
 }
 
 func (rs *RedisConfStore) FetchRateLimitConfig(name string) (RateLimitConfig, error) {
 	c := rs.pipelinedFetchConf()
-	config, ok := c.rateLimitsByName[name]
+	cfg, ok := c.rateLimitsByName[name]
 	if !ok {
 		return RateLimitConfig{}, fmt.Errorf("no rate limit exists with name %v", name)
 	}
-	return config, nil
+	return cfg, nil
 }
 
-func (rs *RedisConfStore) ApplyGlobalRateLimitConfig(config GlobalRateLimitConfig) error {
-	configBytes, err := json.Marshal(config)
+func (rs *RedisConfStore) ApplyGlobalRateLimitConfig(cfg GlobalRateLimitConfig) error {
+	b, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
 	pipe := rs.redis.TxPipeline()
-	pipe.Set(redisGlobalRateLimitConfigKey, string(configBytes), 0)
+	pipe.Set(redisGlobalRateLimitConfigKey, string(b), 0)
 	_, err = pipe.Exec()
 	return err
 }
@@ -517,13 +410,13 @@ func (rs *RedisConfStore) FetchGlobalRateLimitConfig() (GlobalRateLimitConfig, e
 	return *c.globalRateLimit, nil
 }
 
-func (rs *RedisConfStore) ApplyGlobalSettingsConfig(config GlobalSettingsConfig) error {
-	configBytes, err := json.Marshal(config)
+func (rs *RedisConfStore) ApplyGlobalSettingsConfig(cfg GlobalSettingsConfig) error {
+	b, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("error marshaling json: %v", err)
 	}
 	pipe := rs.redis.TxPipeline()
-	pipe.Set(redisGlobalSettingsConfigKey, string(configBytes), 0)
+	pipe.Set(redisGlobalSettingsConfigKey, string(b), 0)
 
 	_, err = pipe.Exec()
 	return err
@@ -645,8 +538,8 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.reporter.CurrentRouteLimit(path, config.Spec.Limit)
 	}
 
-	rs.conf.jailsByName = make(map[string]JailConfig)
-	rs.conf.jailsByPath = make(map[string]JailConfig)
+	rs.conf.jailsByName = make(map[string]JailConfig, len(fetched.jailsByName))
+	rs.conf.jailsByPath = make(map[string]JailConfig, len(fetched.jailsByName))
 
 	for name, config := range fetched.jailsByName {
 		rs.conf.jailsByName[name] = config
@@ -692,6 +585,173 @@ func (rs *RedisConfStore) releaseRedisPrisonersLock(lock *redislock.Lock, start 
 	rs.reporter.RedisReleaseLock(time.Since(start), err != nil)
 }
 
+func (fc *fetchConf) setWhitelist(cmd *redis.StringSliceCmd, logger logrus.FieldLogger) {
+	whitelistStrs, err := cmd.Result()
+	if err != nil {
+		logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
+		return
+	}
+	fc.whitelist = IPNetsFromStrings(whitelistStrs, logger)
+}
+
+func (fc *fetchConf) setBlacklist(cmd *redis.StringSliceCmd, logger logrus.FieldLogger) {
+	blacklistStrs, err := cmd.Result()
+	if err != nil {
+		logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
+		return
+	}
+	fc.blacklist = IPNetsFromStrings(blacklistStrs, logger)
+}
+
+func (fc *fetchConf) setGlobalRateLimit(cmd *redis.StringCmd, logger logrus.FieldLogger) {
+	b, err := cmd.Bytes()
+	if err != nil {
+		if err != redis.Nil {
+			logger.WithError(err).Warnf("error sending GET for key %v", redisGlobalRateLimitConfigKey)
+		}
+		return
+	}
+	cfg := GlobalRateLimitConfig{}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		logger.WithError(err).Warnf("error unmarshaling json for key %v", redisGlobalRateLimitConfigKey)
+		return
+	}
+	if cfg.Version != GlobalRateLimitConfigVersion {
+		logger.Warnf(
+			"stored global rate limit config version %v does not match current version %v; skipping",
+			cfg.Version,
+			GlobalRateLimitConfigVersion,
+		)
+		return
+	}
+	fc.globalRateLimit = &cfg
+}
+
+func (fc *fetchConf) setGlobalSettings(cmd *redis.StringCmd, logger logrus.FieldLogger) {
+	b, err := cmd.Bytes()
+	if err != nil {
+		if err != redis.Nil {
+			logger.WithError(err).Warnf("error sending GET for key %v", redisGlobalSettingsConfigKey)
+		}
+		return
+	}
+	cfg := GlobalSettingsConfig{}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		logger.WithError(err).Warnf("error unmarshaling json for key %v", redisGlobalSettingsConfigKey)
+		return
+	}
+	if cfg.Version != GlobalSettingsConfigVersion {
+		logger.Warnf(
+			"stored global settings config version %v does not match current version %v; skipping",
+			cfg.Version,
+			GlobalSettingsConfigVersion,
+		)
+		return
+	}
+	fc.globalSettings = &cfg
+}
+
+func (fc *fetchConf) setRateLimits(cmd *redis.StringStringMapCmd, logger logrus.FieldLogger) {
+	rateLimits, err := cmd.Result()
+	if err != nil {
+		if err != redis.Nil {
+			logger.WithError(err).Warnf("error sending GET for key %v", redisRateLimitsConfigKey)
+		}
+		return
+	}
+	for name, configString := range rateLimits {
+		cfg := RateLimitConfig{}
+		if err := json.Unmarshal([]byte(configString), &cfg); err != nil {
+			logger.WithError(err).Warnf("error unmarshaling json for key %v value %v", redisRateLimitsConfigKey, name)
+			continue
+		}
+		if cfg.Version != RateLimitConfigVersion {
+			logger.Warnf(
+				"stored rate limit config version %v does not match current version %v; skipping",
+				cfg.Version,
+				RateLimitConfigVersion,
+			)
+			continue
+		}
+		fc.rateLimitsByName[name] = cfg
+		fc.rateLimitsByPath[cfg.Spec.Conditions.Path] = cfg
+	}
+}
+
+func (fc *fetchConf) setJails(cmd *redis.StringStringMapCmd, logger logrus.FieldLogger) {
+	jails, err := cmd.Result()
+	if err != nil {
+		if err != redis.Nil {
+			logger.WithError(err).Warnf("error sending GET for key %v", redisJailsConfigKey)
+		}
+		return
+	}
+	for name, configString := range jails {
+		cfg := JailConfig{}
+		if err := json.Unmarshal([]byte(configString), &cfg); err != nil {
+			logger.WithError(err).Warnf("error unmarshaling json for key %v value %v", redisJailsConfigKey, name)
+			continue
+		}
+		if cfg.Version != JailConfigVersion {
+			logger.Warnf(
+				"stored jail config version %v does not match current version %v; skipping",
+				cfg.Version,
+				JailConfigVersion,
+			)
+			continue
+		}
+		fc.jailsByName[name] = cfg
+		fc.jailsByPath[cfg.Spec.Conditions.Path] = cfg
+	}
+}
+
+func (rs *RedisConfStore) fetchPrisoners() {
+	lock, err := rs.obtainRedisPrisonersLock()
+
+	if err != nil {
+		rs.logger.Errorf("error obtaining lock in pipelined fetch: %v", err)
+		return
+	}
+
+	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
+	expiredPrisoners := []string{}
+	cmd := rs.redis.HGetAll(redisPrisonersKey)
+	// Note: In order to match the rest of the configuration, we purposely purge the prisoners regardless of whether we
+	// can connect or update the data in Redis. This way, Guardian continues to "fail open"
+	rs.conf.prisoners.purge()
+	prisoners, err := cmd.Result()
+	if err != nil {
+		rs.logger.Errorf("error getting prisoners from redis: %v", err)
+		return
+	}
+	for ip, prisonerJSON := range prisoners {
+		var prisoner Prisoner
+		err := json.Unmarshal([]byte(prisonerJSON), &prisoner)
+		if err != nil {
+			rs.logger.WithError(err).Warnf("unable to unmarshal json: %v", err)
+			continue
+		}
+		if time.Now().UTC().Before(prisoner.Expiry) {
+			rs.logger.Debugf("adding %v to prisoners\n", prisoner.IP.String())
+			rs.conf.prisoners.addPrisonerFromStore(prisoner)
+			continue
+		}
+		rs.logger.Debugf("removing %v from prisoners\n", prisoner.IP.String())
+		expiredPrisoners = append(expiredPrisoners, ip)
+	}
+
+	if len(expiredPrisoners) == 0 {
+		return
+	}
+	removeExpiredPrisonersCmd := rs.redis.HDel(redisPrisonersKey, expiredPrisoners...)
+	n, err := removeExpiredPrisonersCmd.Result()
+	if err != nil {
+		rs.logger.Errorf("error removing expired prisoners: %v", err)
+		return
+	}
+	rs.logger.Debugf("removed %d expired prisoners: %v", n, expiredPrisoners)
+}
+
 func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	newConf := fetchConf{
 		rateLimitsByName: make(map[string]RateLimitConfig),
@@ -717,132 +777,12 @@ func (rs *RedisConfStore) pipelinedFetchConf() fetchConf {
 	jailsCmd := pipe.HGetAll(redisJailsConfigKey)
 	pipe.Exec()
 
-	if whitelistStrs, err := whitelistKeysCmd.Result(); err == nil {
-		newConf.whitelist = IPNetsFromStrings(whitelistStrs, rs.logger)
-	} else {
-		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
-	}
-
-	if blacklistStrs, err := blacklistKeysCmd.Result(); err == nil {
-		newConf.blacklist = IPNetsFromStrings(blacklistStrs, rs.logger)
-	} else {
-		rs.logger.WithError(err).Warnf("error send HKEYS for key %v", redisIPWhitelistKey)
-	}
-
-	if globalRateLimitBytes, err := globalRateLimitCmd.Bytes(); err == nil {
-		config := GlobalRateLimitConfig{}
-		if err := json.Unmarshal(globalRateLimitBytes, &config); err == nil {
-			if config.Version == GlobalRateLimitConfigVersion {
-				newConf.globalRateLimit = &config
-			} else {
-				rs.logger.Warnf(
-					"stored global rate limit config version %v does not match current version %v; skipping",
-					config.Version,
-					GlobalRateLimitConfigVersion,
-				)
-			}
-		} else {
-			rs.logger.WithError(err).Warnf("error unmarshaling json for key %v", redisGlobalRateLimitConfigKey)
-		}
-	} else if err != redis.Nil {
-		rs.logger.WithError(err).Warnf("error sending GET for key %v", redisGlobalRateLimitConfigKey)
-	}
-
-	if globalSettingsBytes, err := globalSettingsCmd.Bytes(); err == nil {
-		config := GlobalSettingsConfig{}
-		if err := json.Unmarshal(globalSettingsBytes, &config); err == nil {
-			if config.Version == GlobalSettingsConfigVersion {
-				newConf.globalSettings = &config
-			} else {
-				rs.logger.Warnf(
-					"stored global settings config version %v does not match current version %v; skipping",
-					config.Version,
-					GlobalSettingsConfigVersion,
-				)
-			}
-		} else {
-			rs.logger.WithError(err).Warnf("error unmarshaling json for key %v", redisGlobalSettingsConfigKey)
-		}
-	} else if err != redis.Nil {
-		rs.logger.WithError(err).Warnf("error sending GET for key %v", redisGlobalSettingsConfigKey)
-	}
-
-	for name, configString := range rateLimitsCmd.Val() {
-		config := RateLimitConfig{}
-		if err := json.Unmarshal([]byte(configString), &config); err == nil {
-			if config.Version == RateLimitConfigVersion {
-				newConf.rateLimitsByName[name] = config
-				newConf.rateLimitsByPath[config.Spec.Conditions.Path] = config
-			} else {
-				rs.logger.Warnf(
-					"stored rate limit config version %v does not match current version %v; skipping",
-					config.Version,
-					RateLimitConfigVersion,
-				)
-			}
-		} else {
-			rs.logger.WithError(err).Warnf("error unmarshaling json for key %v value %v", redisRateLimitsConfigKey, name)
-		}
-	}
-
-	for name, configString := range jailsCmd.Val() {
-		config := JailConfig{}
-		if err := json.Unmarshal([]byte(configString), &config); err == nil {
-			if config.Version == JailConfigVersion {
-				newConf.jailsByName[name] = config
-				newConf.jailsByPath[config.Spec.Conditions.Path] = config
-			} else {
-				rs.logger.Warnf(
-					"stored jail config version %v does not match current version %v; skipping",
-					config.Version,
-					JailConfigVersion,
-				)
-			}
-		} else {
-			rs.logger.WithError(err).Warnf("error unmarshaling json for key %v value %v", redisJailsConfigKey, name)
-		}
-	}
-
-	lock, err := rs.obtainRedisPrisonersLock()
-	if err != nil {
-		rs.logger.Errorf("error obtaining lock in pipelined fetch: %v", err)
-		return newConf
-	}
-
-	defer rs.releaseRedisPrisonersLock(lock, time.Now().UTC())
-	expiredPrisoners := []string{}
-	prisonersCmd := rs.redis.HGetAll(redisPrisonersKey)
-	// Note: In order to match the rest of the configuration, we purposely purge the prisoners regardless of whether we
-	// can connect or update the data in Redis. This way, Guardian continues to "fail open"
-	rs.conf.prisoners.purge()
-	if prisoners, err := prisonersCmd.Result(); err == nil {
-		for ip, prisonerJson := range prisoners {
-			var prisoner Prisoner
-			err := json.Unmarshal([]byte(prisonerJson), &prisoner)
-			if err != nil {
-				rs.logger.WithError(err).Warnf("unable to unmarshal json: %v", err)
-				continue
-			}
-			if time.Now().UTC().Before(prisoner.Expiry) {
-				rs.logger.Debugf("adding %v to prisoners\n", prisoner.IP.String())
-				rs.conf.prisoners.addPrisonerFromStore(prisoner)
-			} else {
-				rs.logger.Debugf("removing %v from prisoners\n", prisoner.IP.String())
-				expiredPrisoners = append(expiredPrisoners, ip)
-			}
-		}
-	} else {
-		rs.logger.Errorf("error getting prisoners from redis: %v", err)
-	}
-
-	if len(expiredPrisoners) > 0 {
-		removeExpiredPrisonersCmd := rs.redis.HDel(redisPrisonersKey, expiredPrisoners...)
-		if n, err := removeExpiredPrisonersCmd.Result(); err == nil {
-			rs.logger.Debugf("removed %d expired prisoners: %v", n, expiredPrisoners)
-		} else {
-			rs.logger.Errorf("error removing expired prisoners: %v", err)
-		}
-	}
-
+	newConf.setWhitelist(whitelistKeysCmd, rs.logger)
+	newConf.setBlacklist(blacklistKeysCmd, rs.logger)
+	newConf.setGlobalRateLimit(globalRateLimitCmd, rs.logger)
+	newConf.setGlobalSettings(globalSettingsCmd, rs.logger)
+	newConf.setRateLimits(rateLimitsCmd, rs.logger)
+	newConf.setJails(jailsCmd, rs.logger)
+	rs.fetchPrisoners()
 	return newConf
 }

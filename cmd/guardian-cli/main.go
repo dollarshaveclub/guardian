@@ -102,39 +102,32 @@ func main() {
 	case applyCmd.FullCommand():
 		err := applyConfigs(redisConfStore, *applyConfigFilePaths, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error applying configuration: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error applying configuration: %v", err))
 		}
 	case getCmd.FullCommand():
 		err := getConfig(redisConfStore, *getConfigKind, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting configuration: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error getting configuration: %v", err))
 		}
 	case deleteCmd.FullCommand():
 		err := deleteConfig(redisConfStore, *deleteConfigKind, *deleteConfigName, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error deleting configuration: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error deleting configuration: %v", err))
 		}
 	case addWhitelistCmd.FullCommand():
 		err := addWhitelist(redisConfStore, *addCidrStrings, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error adding CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error adding CIDRS: %v", err))
 		}
-
 	case removeWhitelistCmd.FullCommand():
 		err := removeWhitelist(redisConfStore, *removeCidrStrings, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error removing CIDRS: %v", err))
 		}
 	case getWhitelistCmd.FullCommand():
 		whitelist, err := getWhitelist(redisConfStore, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error listing CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error listing CIDRS: %v", err))
 		}
 
 		for _, cidr := range whitelist {
@@ -143,21 +136,18 @@ func main() {
 	case addBlacklistCmd.FullCommand():
 		err := addBlacklist(redisConfStore, *addBlacklistCidrStrings, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error adding CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error adding CIDRS: %v", err))
 		}
 
 	case removeBlacklistCmd.FullCommand():
 		err := removeBlacklist(redisConfStore, *removeBlacklistCidrStrings, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error removing CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error removing CIDRS: %v", err))
 		}
 	case getBlacklistCmd.FullCommand():
 		blacklist, err := getBlacklist(redisConfStore, logger)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error listing CIDRS: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error listing CIDRS: %v", err))
 		}
 
 		for _, cidr := range blacklist {
@@ -168,15 +158,13 @@ func main() {
 		limit := guardian.Limit{Count: *limitCount, Duration: *limitDuration, Enabled: *limitEnabled}
 		err := setLimitDeprecated(redisConfStore, limit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error setting limit: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error setting limit: %v", err))
 		}
 	case getLimitCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get GlobalRateLimit instead\n", getLimitCmd.FullCommand())
 		limit, err := getLimitDeprecated(redisConfStore)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting limit: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error getting limit: %v", err))
 		}
 		fmt.Printf("%v\n", limit)
 	case setRouteRateLimitsCmd.FullCommand():
@@ -189,8 +177,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get RateLimit instead\n", getRouteRateLimitsCmd.FullCommand())
 		routeRateLimits, err := getRouteRateLimitsDeprecated(redisConfStore)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting route rate limits: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error getting route rate limits: %v", err))
 		}
 		config := guardian.RouteRateLimitConfigDeprecated{}
 		for path, limit := range routeRateLimits {
@@ -211,22 +198,20 @@ func main() {
 			fatalerror(fmt.Errorf("error remove route rate limits: %v", err))
 		}
 	case setReportOnlyCmd.FullCommand():
-		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a GlobalSettings config instead\n", setReportOnlyCmd.FullCommand())
+		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a GlobalSettings config instead", setReportOnlyCmd.FullCommand())
 		err := setReportOnlyDeprecated(redisConfStore, *reportOnly)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error setting report only flag: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error setting report only flag: %v", err))
 		}
 	case getReportOnlyCmd.FullCommand():
 		fmt.Fprintf(os.Stderr, "%s is deprecated: get GlobalSettings instead\n", setReportOnlyCmd.FullCommand())
 		reportOnly, err := getReportOnlyDeprecated(redisConfStore)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error getting report only flag: %v\n", err)
-			os.Exit(1)
+			fatalerror(fmt.Errorf("error getting report only flag: %v", err))
 		}
 		fmt.Println(reportOnly)
 	case setJailsCmd.FullCommand():
-		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a Jail config instead\n", setJailsCmd.FullCommand())
+		fmt.Fprintf(os.Stderr, "%s is deprecated: apply a Jail config instead", setJailsCmd.FullCommand())
 		err := setJailsDeprecated(redisConfStore, *jailsConfigFilePath)
 		if err != nil {
 			fatalerror(fmt.Errorf("error setting jails: %v", err))
@@ -263,78 +248,72 @@ func main() {
 		if err != nil {
 			fatalerror(fmt.Errorf("error fetching prisoners: %v", err))
 		}
-		prisonersJson, err := yaml.Marshal(prisoners)
+		prisonersJSON, err := yaml.Marshal(prisoners)
 		if err != nil {
 			fatalerror(fmt.Errorf("error marshaling prisoners: %v", err))
 		}
-		fmt.Println(string(prisonersJson))
+		fmt.Println(string(prisonersJSON))
 	}
 }
 
 func applyConfigFromReader(store *guardian.RedisConfStore, r io.Reader, logger logrus.FieldLogger) error {
 	dec := yaml.NewDecoder(r)
 	for {
-		var config struct {
-			guardian.ConfigMetadata `yaml:",inline"`
-			GlobalRateLimitSpec     *guardian.GlobalRateLimitSpec `yaml:"globalRateLimitSpec"`
-			GlobalSettingsSpec      *guardian.GlobalSettingsSpec  `yaml:"globalSettingsSpec"`
-			RateLimitSpec           *guardian.RateLimitSpec       `yaml:"rateLimitSpec"`
-			JailSpec                *guardian.JailSpec            `yaml:"jailSpec"`
-		}
-		err := dec.Decode(&config)
+		cfg := guardian.Config{}
+		err := dec.Decode(&cfg)
 		if err != nil {
 			if err == io.EOF { // No more YAML documents to read
 				break
 			}
 			return fmt.Errorf("error decoding yaml: %v", err)
 		}
-		switch config.Kind {
+		switch cfg.Kind {
 		case guardian.GlobalRateLimitConfigKind:
-			if config.GlobalRateLimitSpec == nil {
-				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			if cfg.GlobalRateLimitSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", cfg.Kind)
 			}
-			config := guardian.GlobalRateLimitConfig{
-				ConfigMetadata: config.ConfigMetadata,
-				Spec:           *config.GlobalRateLimitSpec,
+			cfg := guardian.GlobalRateLimitConfig{
+				ConfigMetadata: cfg.ConfigMetadata,
+				Spec:           *cfg.GlobalRateLimitSpec,
 			}
-			if err := applyGlobalRateLimitConfig(store, config); err != nil {
+			if err := applyGlobalRateLimitConfig(store, cfg); err != nil {
 				return err
 			}
 		case guardian.GlobalSettingsConfigKind:
-			if config.GlobalSettingsSpec == nil {
-				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			if cfg.GlobalSettingsSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", cfg.Kind)
 			}
-			config := guardian.GlobalSettingsConfig{
-				ConfigMetadata: config.ConfigMetadata,
-				Spec:           *config.GlobalSettingsSpec,
+			cfg := guardian.GlobalSettingsConfig{
+				ConfigMetadata: cfg.ConfigMetadata,
+				Spec:           *cfg.GlobalSettingsSpec,
 			}
-			if err := applyGlobalSettingsConfig(store, config); err != nil {
+			if err := applyGlobalSettingsConfig(store, cfg); err != nil {
 				return err
 			}
 		case guardian.RateLimitConfigKind:
-			if config.RateLimitSpec == nil {
-				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			if cfg.RateLimitSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", cfg.Kind)
 			}
-			config := guardian.RateLimitConfig{
-				ConfigMetadata: config.ConfigMetadata,
-				Spec:           *config.RateLimitSpec,
+			cfg := guardian.RateLimitConfig{
+				ConfigMetadata: cfg.ConfigMetadata,
+				Spec:           *cfg.RateLimitSpec,
 			}
-			if err := applyRateLimitConfig(store, config); err != nil {
+			if err := applyRateLimitConfig(store, cfg); err != nil {
 				return err
 			}
 		case guardian.JailConfigKind:
-			if config.JailSpec == nil {
-				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", config.Kind)
+			if cfg.JailSpec == nil {
+				return fmt.Errorf("Kind is %v but did not decode a corresponding spec", cfg.Kind)
 			}
-			config := guardian.JailConfig{
-				ConfigMetadata: config.ConfigMetadata,
-				Spec:           *config.JailSpec,
+			cfg := guardian.JailConfig{
+				ConfigMetadata: cfg.ConfigMetadata,
+				Spec:           *cfg.JailSpec,
 			}
-			if err := applyJailConfig(store, config); err != nil {
+			if err := applyJailConfig(store, cfg); err != nil {
 				return err
 			}
 		default:
-			return fmt.Errorf("unrecognized config file kind: %v", config.Kind)
+			return fmt.Errorf("unrecognized config file kind: %v", cfg.Kind)
 		}
 	}
 	return nil
@@ -348,12 +327,12 @@ func applyConfigs(store *guardian.RedisConfStore, configFilePaths []string, logg
 		}
 	}
 	for _, configFilePath := range configFilePaths {
-		file, err := os.Open(configFilePath)
+		f, err := os.Open(configFilePath)
 		if err != nil {
 			return fmt.Errorf("error opening config file: %v", err)
 		}
-		defer file.Close()
-		err = applyConfigFromReader(store, file, logger)
+		defer f.Close()
+		err = applyConfigFromReader(store, f, logger)
 		if err != nil {
 			return fmt.Errorf("error applying config file %v: %v", configFilePath, err)
 		}
@@ -409,6 +388,8 @@ func getConfig(store *guardian.RedisConfStore, configKind string, logger logrus.
 			fmt.Println(string(configYaml))
 
 		}
+	default:
+		return fmt.Errorf("unrecognized config kind: %v", configKind)
 	}
 	return nil
 }
@@ -425,8 +406,12 @@ func deleteConfig(store *guardian.RedisConfStore, configKind string, configName 
 		if err != nil {
 			return fmt.Errorf("error deleting jail config: %v", err)
 		}
-	default:
+	case guardian.GlobalRateLimitConfigKind:
+		fallthrough
+	case guardian.GlobalSettingsConfigKind:
 		return fmt.Errorf("config kind %v does not support deletion", configKind)
+	default:
+		return fmt.Errorf("unrecognized config kind: %v", configKind)
 	}
 	return nil
 }
