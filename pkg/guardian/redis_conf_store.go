@@ -545,7 +545,7 @@ func (rs *RedisConfStore) UpdateCachedConf() {
 		rs.conf.jailsByName[name] = config
 		path := config.Spec.Conditions.Path
 		rs.conf.jailsByPath[path] = config
-		rs.reporter.CurrentRouteLimit(path, config.Spec.Limit)
+		rs.reporter.CurrentRouteJail(path, config.Spec.Jail)
 	}
 
 	rs.reporter.CurrentWhitelist(rs.conf.whitelist)
