@@ -11,7 +11,7 @@ while [ $secs -ge 0 ]; do
 done
 
 printf "\nRunning tests...\n"
-go test ./e2e/
+go test -p 1 ./e2e/
 results=$?
 
 echo "Stopping async guardian..."

@@ -81,24 +81,66 @@ func TestConfStoreFetchesSets(t *testing.T) {
 
 	expectedWhitelist := parseCIDRs([]string{"10.0.0.1/8"})
 	expectedBlacklist := parseCIDRs([]string{"12.0.0.1/8"})
-	expectedLimit := Limit{Count: 20, Duration: time.Second, Enabled: true}
-	expectedReportOnly := true
-	fooBarURL, _ := url.Parse("/foo/bar")
-	expectedRouteRateLimits := map[url.URL]Limit{
-		*fooBarURL: Limit{
-			Count:    5,
-			Duration: time.Second,
-			Enabled:  true,
+	expectedGlobalRateLimit := GlobalRateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalRateLimitConfigVersion,
+			Kind:    GlobalRateLimitConfigKind,
+			Name:    GlobalRateLimitConfigKind,
 		},
-	}
-	expectedJails := map[url.URL]Jail{
-		*fooBarURL: {
+		Spec: GlobalRateLimitSpec{
 			Limit: Limit{
-				Count:    10,
-				Duration: time.Minute,
+				Count:    20,
+				Duration: time.Second,
 				Enabled:  true,
 			},
-			BanDuration: time.Hour,
+		},
+	}
+	expectedGlobalSettings := GlobalSettingsConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalSettingsConfigVersion,
+			Kind:    GlobalSettingsConfigKind,
+			Name:    GlobalSettingsConfigKind,
+		},
+		Spec: GlobalSettingsSpec{
+			ReportOnly: true,
+		},
+	}
+	expectedRateLimits := []RateLimitConfig{
+		RateLimitConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version: RateLimitConfigVersion,
+				Kind:    RateLimitConfigKind,
+				Name:    "/foo/bar",
+			},
+			Spec: RateLimitSpec{
+				Limit: Limit{
+					Count:    5,
+					Duration: time.Second,
+					Enabled:  true,
+				},
+				Conditions: Conditions{
+					Path: "/foo/bar",
+				},
+			},
+		},
+	}
+	expectedJails := []JailConfig{
+		JailConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version: JailConfigVersion,
+				Kind:    JailConfigKind,
+				Name:    "/foo/bar",
+			},
+			Spec: JailSpec{
+				Jail: Jail{
+					Limit: Limit{
+						Count:    10,
+						Duration: time.Minute,
+						Enabled:  true,
+					},
+					BanDuration: time.Hour,
+				},
+			},
 		},
 	}
 
@@ -110,20 +152,24 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetLimit(expectedLimit); err != nil {
+	if err := c.ApplyGlobalRateLimitConfig(expectedGlobalRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetReportOnly(expectedReportOnly); err != nil {
+	if err := c.ApplyGlobalSettingsConfig(expectedGlobalSettings); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetRouteRateLimits(expectedRouteRateLimits); err != nil {
-		t.Fatalf("got error: %v", err)
+	for _, config := range expectedRateLimits {
+		if err := c.ApplyRateLimitConfig(config); err != nil {
+			t.Fatalf("got error: %v", err)
+		}
 	}
 
-	if err := c.SetJails(expectedJails); err != nil {
-		t.Fatalf("got error: %v", err)
+	for _, config := range expectedJails {
+		if err := c.ApplyJailConfig(config); err != nil {
+			t.Fatalf("got error: %v", err)
+		}
 	}
 
 	gotWhitelist, err := c.FetchWhitelist()
@@ -136,25 +182,18 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotLimit, err := c.FetchLimit()
+	gotGlobalRateLimit, err := c.FetchGlobalRateLimitConfig()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotReportOnly, err := c.FetchReportOnly()
+	gotGlobalSettings, err := c.FetchGlobalSettingsConfig()
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	gotRouteRateLimits, err := c.FetchRouteRateLimits()
-	if err != nil {
-		t.Fatalf("got error: %v", err)
-	}
-
-	gotJails, err := c.FetchJails()
-	if err != nil {
-		t.Fatalf("got error: %v", err)
-	}
+	gotRateLimits := c.FetchRateLimitConfigs()
+	gotJails := c.FetchJailConfigs()
 
 	if !cmp.Equal(gotWhitelist, expectedWhitelist) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)
@@ -164,16 +203,16 @@ func TestConfStoreFetchesSets(t *testing.T) {
 		t.Errorf("expected: %v received: %v", expectedBlacklist, gotBlacklist)
 	}
 
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
+	if gotGlobalRateLimit != expectedGlobalRateLimit {
+		t.Errorf("expected: %v received: %v", expectedGlobalRateLimit, gotGlobalRateLimit)
 	}
 
-	if gotReportOnly != expectedReportOnly {
-		t.Errorf("expected: %v received: %v", expectedReportOnly, gotReportOnly)
+	if gotGlobalSettings != expectedGlobalSettings {
+		t.Errorf("expected: %v received: %v", expectedGlobalSettings, gotGlobalSettings)
 	}
 
-	if !cmp.Equal(gotRouteRateLimits, expectedRouteRateLimits) {
-		t.Errorf("expected: %v received: %v", expectedRouteRateLimits, gotRouteRateLimits)
+	if !cmp.Equal(gotRateLimits, expectedRateLimits) {
+		t.Errorf("expected: %v received: %v", expectedRateLimits, gotRateLimits)
 	}
 
 	if !cmp.Equal(gotJails, expectedJails) {
@@ -187,8 +226,30 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 
 	expectedWhitelist := parseCIDRs([]string{"10.0.0.1/8"})
 	expectedBlacklist := parseCIDRs([]string{"12.0.0.1/8"})
-	expectedLimit := Limit{Count: 20, Duration: time.Second, Enabled: true}
-	expectedReportOnly := true
+	expectedGlobalRateLimit := GlobalRateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalRateLimitConfigVersion,
+			Kind:    GlobalRateLimitConfigKind,
+			Name:    GlobalRateLimitConfigKind,
+		},
+		Spec: GlobalRateLimitSpec{
+			Limit: Limit{
+				Count:    20,
+				Duration: time.Second,
+				Enabled:  true,
+			},
+		},
+	}
+	expectedGlobalSettings := GlobalSettingsConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalSettingsConfigVersion,
+			Kind:    GlobalSettingsConfigKind,
+			Name:    GlobalSettingsConfigKind,
+		},
+		Spec: GlobalSettingsSpec{
+			ReportOnly: true,
+		},
+	}
 
 	if err := c.AddWhitelistCidrs(expectedWhitelist); err != nil {
 		t.Fatalf("got error: %v", err)
@@ -198,11 +259,11 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetLimit(expectedLimit); err != nil {
+	if err := c.ApplyGlobalRateLimitConfig(expectedGlobalRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetReportOnly(expectedReportOnly); err != nil {
+	if err := c.ApplyGlobalSettingsConfig(expectedGlobalSettings); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
@@ -221,12 +282,12 @@ func TestConfStoreUpdateCacheConf(t *testing.T) {
 		t.Errorf("expected: %v received: %v", expectedBlacklist, gotBlacklist)
 	}
 
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
+	if gotLimit != expectedGlobalRateLimit.Spec.Limit {
+		t.Errorf("expected: %v received: %v", expectedGlobalRateLimit.Spec.Limit, gotLimit)
 	}
 
-	if gotReportOnly != expectedReportOnly {
-		t.Errorf("expected: %v received: %v", expectedReportOnly, gotReportOnly)
+	if gotReportOnly != expectedGlobalSettings.Spec.ReportOnly {
+		t.Errorf("expected: %v received: %v", expectedGlobalSettings.Spec.ReportOnly, gotReportOnly)
 	}
 }
 
@@ -236,8 +297,30 @@ func TestConfStoreRunUpdatesCache(t *testing.T) {
 
 	expectedWhitelist := parseCIDRs([]string{"10.1.1.1/8"})
 	expectedBlacklist := parseCIDRs([]string{"11.1.1.1/8"})
-	expectedLimit := Limit{Count: 40, Duration: time.Minute, Enabled: true}
-	expectedReportOnly := true
+	expectedGlobalRateLimit := GlobalRateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalRateLimitConfigVersion,
+			Kind:    GlobalRateLimitConfigKind,
+			Name:    GlobalRateLimitConfigKind,
+		},
+		Spec: GlobalRateLimitSpec{
+			Limit: Limit{
+				Count:    40,
+				Duration: time.Minute,
+				Enabled:  true,
+			},
+		},
+	}
+	expectedGlobalSettings := GlobalSettingsConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: GlobalSettingsConfigVersion,
+			Kind:    GlobalSettingsConfigKind,
+			Name:    GlobalSettingsConfigKind,
+		},
+		Spec: GlobalSettingsSpec{
+			ReportOnly: true,
+		},
+	}
 
 	if err := c.AddWhitelistCidrs(expectedWhitelist); err != nil {
 		t.Fatalf("got error: %v", err)
@@ -247,11 +330,11 @@ func TestConfStoreRunUpdatesCache(t *testing.T) {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetLimit(expectedLimit); err != nil {
+	if err := c.ApplyGlobalRateLimitConfig(expectedGlobalRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if err := c.SetReportOnly(expectedReportOnly); err != nil {
+	if err := c.ApplyGlobalSettingsConfig(expectedGlobalSettings); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
@@ -278,12 +361,12 @@ func TestConfStoreRunUpdatesCache(t *testing.T) {
 		t.Errorf("expected: %v received: %v", expectedWhitelist, gotWhitelist)
 	}
 
-	if gotLimit != expectedLimit {
-		t.Errorf("expected: %v received: %v", expectedLimit, gotLimit)
+	if gotLimit != expectedGlobalRateLimit.Spec.Limit {
+		t.Errorf("expected: %v received: %v", expectedGlobalRateLimit.Spec.Limit, gotLimit)
 	}
 
-	if gotReportOnly != expectedReportOnly {
-		t.Errorf("expected: %v received: %v", expectedReportOnly, gotReportOnly)
+	if gotReportOnly != expectedGlobalSettings.Spec.ReportOnly {
+		t.Errorf("expected: %v received: %v", expectedGlobalSettings.Spec.ReportOnly, gotReportOnly)
 	}
 }
 
@@ -338,55 +421,80 @@ func TestConfStoreRemoveBlacklistCidr(t *testing.T) {
 func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
-	fooBarLimit := Limit{
-		Count:    5,
-		Duration: time.Second,
-		Enabled:  true,
+
+	fooBarRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    "/foo/bar",
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    5,
+				Duration: time.Second,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: "/foo/bar",
+			},
+		},
 	}
 
-	fooBazURL, _ := url.Parse("/foo/baz")
-	fooBazLimit := Limit{
-		Count:    3,
-		Duration: time.Second,
-		Enabled:  false,
+	fooBazRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    "/foo/baz",
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    3,
+				Duration: time.Second,
+				Enabled:  false,
+			},
+			Conditions: Conditions{
+				Path: "/foo/baz",
+			},
+		},
 	}
 
-	routeRateLimits := map[url.URL]Limit{
-		*fooBarURL: fooBarLimit,
-		*fooBazURL: fooBazLimit,
+	rateLimits := []RateLimitConfig{
+		fooBarRateLimit,
+		fooBazRateLimit,
 	}
 
-	if err := c.SetRouteRateLimits(routeRateLimits); err != nil {
-		t.Fatalf("got error: %v", err)
+	for _, config := range rateLimits {
+		if err := c.ApplyRateLimitConfig(config); err != nil {
+			t.Fatalf("got error: %v", err)
+		}
 	}
 
-	got, err := c.FetchRouteRateLimit(*fooBarURL)
+	config, err := c.FetchRateLimitConfig(fooBarRateLimit.Name)
+
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if !cmp.Equal(got, fooBarLimit) {
-		t.Errorf("expected: %v, received: %v", fooBarLimit, got)
+	if !cmp.Equal(config, fooBarRateLimit) {
+		t.Errorf("expected: %v, received: %v", fooBarRateLimit, config)
 	}
 
 	// Ensure configuration cache is updated after a confSyncInterval
 	c.UpdateCachedConf()
+	fooBarURL, _ := url.Parse(fooBarRateLimit.Spec.Conditions.Path)
 	cachedItem := c.GetRouteRateLimit(*fooBarURL)
-	if !cmp.Equal(cachedItem, fooBarLimit) {
-		t.Errorf("expected: %v, received: %v", fooBarLimit, cachedItem)
+	if !cmp.Equal(cachedItem, fooBarRateLimit.Spec.Limit) {
+		t.Errorf("expected: %v, received: %v", fooBarRateLimit.Spec.Limit, cachedItem)
 	}
 
-	var urls []url.URL
-	urls = append(urls, *fooBarURL)
-	if err := c.RemoveRouteRateLimits(urls); err != nil {
+	if err := c.DeleteRateLimitConfig(fooBarRateLimit.Name); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err = c.FetchRouteRateLimit(*fooBarURL)
+	rateLimit, err := c.FetchRateLimitConfig(fooBarRateLimit.Name)
 	if err == nil {
-		t.Fatalf("expected error fetching route limit which didn't exist")
+		t.Fatalf("found rate limit which shouldn't exist")
 	}
 
 	// Ensure configuration cache is updated after a confSyncInterval
@@ -396,101 +504,150 @@ func TestConfStoreAddRemoveRouteRateLimits(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", Limit{}, cachedItem)
 	}
 
-	got, err = c.FetchRouteRateLimit(*fooBazURL)
+	rateLimit, err = c.FetchRateLimitConfig(fooBazRateLimit.Name)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
-
-	if !cmp.Equal(got, fooBazLimit) {
-		t.Errorf("expected: %v, received: %v", fooBazLimit, got)
+	if !cmp.Equal(rateLimit, fooBazRateLimit) {
+		t.Errorf("expected: %v, received: %v", fooBazRateLimit, config)
 	}
 }
 
 func TestConfStoreSetExistingRoute(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
-	originalRouteRateLimit := map[url.URL]Limit{
-		*fooBarURL: Limit{
-			Count:    5,
-			Duration: time.Second,
-			Enabled:  true,
+
+	fooBarPath := "/foo/bar"
+	originalRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    fooBarPath,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    5,
+				Duration: time.Second,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
 		},
 	}
 
-	if err := c.SetRouteRateLimits(originalRouteRateLimit); err != nil {
+	if err := c.ApplyRateLimitConfig(originalRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	newLimit := Limit{
-		Count:    5,
-		Duration: time.Second,
-		Enabled:  true,
+	newRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    fooBarPath,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    5,
+				Duration: time.Second,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
+		},
 	}
 
-	newRouteRateLimit := map[url.URL]Limit{
-		*fooBarURL: newLimit,
-	}
-	if err := c.SetRouteRateLimits(newRouteRateLimit); err != nil {
+	if err := c.ApplyRateLimitConfig(newRateLimit); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchRouteRateLimit(*fooBarURL)
+	got, err := c.FetchRateLimitConfig(fooBarPath)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if !cmp.Equal(got, newLimit) {
-		t.Errorf("expected: %v, received: %v", newLimit, got)
+	if !cmp.Equal(newRateLimit, got) {
+		t.Errorf("expected: %v, received: %v", newRateLimit, got)
 	}
 }
 
 func TestConfStoreRemoveNonexistentRoute(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
-	fooBarURL, _ := url.Parse("/foo/bar")
-	fooBarLimit := Limit{
-		Count:    5,
-		Duration: time.Second,
-		Enabled:  true,
+	fooBarPath := "/foo/bar"
+
+	fooBarRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    fooBarPath,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    5,
+				Duration: time.Second,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
+		},
 	}
 
-	fooBazURL, _ := url.Parse("/foo/baz")
-	fooBazLimit := Limit{
-		Count:    3,
-		Duration: time.Second,
-		Enabled:  false,
+	fooBazPath := "/foo/baz"
+	fooBazRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    fooBazPath,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    3,
+				Duration: time.Second,
+				Enabled:  false,
+			},
+			Conditions: Conditions{
+				Path: fooBazPath,
+			},
+		},
 	}
 
-	routeRateLimits := map[url.URL]Limit{
-		*fooBarURL: fooBarLimit,
-		*fooBazURL: fooBazLimit,
+	rateLimits := []RateLimitConfig{
+		fooBarRateLimit,
+		fooBazRateLimit,
 	}
 
-	if err := c.SetRouteRateLimits(routeRateLimits); err != nil {
-		t.Fatalf("got error: %v", err)
+	for _, config := range rateLimits {
+		if err := c.ApplyRateLimitConfig(config); err != nil {
+			t.Fatalf("got error: %v", err)
+
+		}
 	}
 
-	var urls []url.URL
-	nonExistentURL, _ := url.Parse("/foo/foo")
-	urls = append(urls, *nonExistentURL, *fooBarURL)
-	if err := c.RemoveRouteRateLimits(urls); err != nil {
-		t.Fatalf("got error: %v", err)
+	nonExistentPath := "/foo/foo"
+	names := []string{nonExistentPath, fooBarPath}
+
+	for _, name := range names {
+		if err := c.DeleteRateLimitConfig(name); err != nil {
+			t.Fatalf("got error: %v", err)
+		}
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err := c.FetchRouteRateLimit(*fooBarURL)
+	got, err := c.FetchRateLimitConfig(fooBarRateLimit.Name)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
 	}
 
-	got, err = c.FetchRouteRateLimit(*fooBazURL)
+	got, err = c.FetchRateLimitConfig(fooBazRateLimit.Name)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	if !cmp.Equal(got, fooBazLimit) {
-		t.Errorf("expected: %v, received: %v", fooBazLimit, got)
+	if !cmp.Equal(got, fooBazRateLimit) {
+		t.Errorf("expected: %v, received: %v", fooBazRateLimit, got)
 	}
 }
 
@@ -498,36 +655,62 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	fooBarURL, _ := url.Parse("/foo/bar")
-	fooBarJail := Jail{
-		Limit: Limit{
-			Count:    5,
-			Duration: time.Second,
-			Enabled:  true,
+	fooBarPath := "/foo/bar"
+	fooBarJail := JailConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: JailConfigVersion,
+			Kind:    JailConfigKind,
+			Name:    fooBarPath,
 		},
-		BanDuration: time.Hour,
-	}
-
-	fooBazURL, _ := url.Parse("/foo/baz")
-	fooBazJail := Jail{
-		Limit: Limit{
-			Count:    3,
-			Duration: time.Second,
-			Enabled:  false,
+		Spec: JailSpec{
+			Jail: Jail{
+				Limit: Limit{
+					Count:    5,
+					Duration: time.Second,
+					Enabled:  true,
+				},
+				BanDuration: time.Hour,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
 		},
-		BanDuration: time.Hour,
 	}
 
-	jails := map[url.URL]Jail{
-		*fooBarURL: fooBarJail,
-		*fooBazURL: fooBazJail,
+	fooBazPath := "/foo/baz"
+	fooBazJail := JailConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: JailConfigVersion,
+			Kind:    JailConfigKind,
+			Name:    fooBazPath,
+		},
+		Spec: JailSpec{
+			Jail: Jail{
+				Limit: Limit{
+					Count:    3,
+					Duration: time.Second,
+					Enabled:  false,
+				},
+				BanDuration: time.Hour,
+			},
+			Conditions: Conditions{
+				Path: fooBazPath,
+			},
+		},
 	}
 
-	if err := c.SetJails(jails); err != nil {
-		t.Fatalf("got error: %v", err)
+	jails := []JailConfig{
+		fooBarJail,
+		fooBazJail,
 	}
 
-	got, err := c.FetchJail(*fooBarURL)
+	for _, config := range jails {
+		if err := c.ApplyJailConfig(config); err != nil {
+			t.Fatalf("got error: %v", err)
+		}
+	}
+
+	got, err := c.FetchJailConfig(fooBarJail.Name)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -536,21 +719,20 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", fooBarJail, got)
 	}
 
+	fooBarURL, _ := url.Parse(fooBarPath)
 	// Ensure configuration cache is updated after a confSyncInterval
 	c.UpdateCachedConf()
 	cachedItem := c.GetJail(*fooBarURL)
-	if !cmp.Equal(cachedItem, fooBarJail) {
+	if !cmp.Equal(cachedItem, fooBarJail.Spec.Jail) {
 		t.Errorf("expected: %v, received: %v", fooBarJail, cachedItem)
 	}
 
-	var urls []url.URL
-	urls = append(urls, *fooBarURL)
-	if err := c.RemoveJails(urls); err != nil {
+	if err := c.DeleteJailConfig(fooBarJail.Name); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
 	// Expect an error since we removed the limits for this route
-	got, err = c.FetchJail(*fooBarURL)
+	got, err = c.FetchJailConfig(fooBarJail.Name)
 	if err == nil {
 		t.Fatalf("expected error fetching route limit which didn't exist")
 	}
@@ -562,7 +744,7 @@ func TestConfStoreAddRemoveJails(t *testing.T) {
 		t.Errorf("expected: %v, received: %v", Jail{}, cachedItem)
 	}
 
-	got, err = c.FetchJail(*fooBazURL)
+	got, err = c.FetchJailConfig(fooBazJail.Name)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}
@@ -576,39 +758,58 @@ func TestConfStoreSetExistingJail(t *testing.T) {
 	c, s := newTestConfStore(t)
 	defer s.Close()
 
-	fooBarURL, _ := url.Parse("/foo/bar")
-	fooBarJail := Jail{
-		Limit: Limit{
-			Count:    5,
-			Duration: time.Second,
-			Enabled:  true,
+	fooBarPath := "/foo/bar"
+	fooBarJail := JailConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: JailConfigVersion,
+			Kind:    JailConfigKind,
+			Name:    fooBarPath,
 		},
-		BanDuration: time.Hour,
+		Spec: JailSpec{
+			Jail: Jail{
+				Limit: Limit{
+					Count:    5,
+					Duration: time.Second,
+					Enabled:  true,
+				},
+				BanDuration: time.Hour,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
+		},
 	}
 
-	jails := map[url.URL]Jail{*fooBarURL: fooBarJail}
-
-	if err := c.SetJails(jails); err != nil {
+	if err := c.ApplyJailConfig(fooBarJail); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	newJail := Jail{
-		Limit: Limit{
-			Count:    100,
-			Duration: time.Minute,
-			Enabled:  false,
+	newJail := JailConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: JailConfigVersion,
+			Kind:    JailConfigKind,
+			Name:    fooBarPath,
 		},
-		BanDuration: time.Minute,
+		Spec: JailSpec{
+			Jail: Jail{
+				Limit: Limit{
+					Count:    100,
+					Duration: time.Minute,
+					Enabled:  false,
+				},
+				BanDuration: time.Minute,
+			},
+			Conditions: Conditions{
+				Path: fooBarPath,
+			},
+		},
 	}
 
-	newJails := map[url.URL]Jail{
-		*fooBarURL: newJail,
-	}
-	if err := c.SetJails(newJails); err != nil {
+	if err := c.ApplyJailConfig(newJail); err != nil {
 		t.Fatalf("got error: %v", err)
 	}
 
-	got, err := c.FetchJail(*fooBarURL)
+	got, err := c.FetchJailConfig(fooBarJail.Name)
 	if err != nil {
 		t.Fatalf("got error: %v", err)
 	}

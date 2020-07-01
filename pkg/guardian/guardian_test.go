@@ -126,8 +126,36 @@ func TestBasicFunctionality(t *testing.T) {
 
 	redisConfStore.AddWhitelistCidrs([]net.IPNet{ipStringToIPNet(t, whitelistedIP)})
 	redisConfStore.AddBlacklistCidrs([]net.IPNet{ipStringToIPNet(t, blacklistedIP)})
-	redisConfStore.SetLimit(Limit{Count: 5, Duration: time.Minute, Enabled: true})
-	redisConfStore.SetReportOnly(false)
+
+	redisConfStore.ApplyGlobalRateLimitConfig(
+		GlobalRateLimitConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version: GlobalRateLimitConfigVersion,
+				Kind:    GlobalRateLimitConfigKind,
+				Name:    GlobalRateLimitConfigKind,
+			},
+			Spec: GlobalRateLimitSpec{
+				Limit: Limit{
+					Count:    5,
+					Duration: time.Minute,
+					Enabled:  true,
+				},
+			},
+		},
+	)
+
+	redisConfStore.ApplyGlobalSettingsConfig(
+		GlobalSettingsConfig{
+			ConfigMetadata: ConfigMetadata{
+				Version: GlobalSettingsConfigVersion,
+				Kind:    GlobalSettingsConfigKind,
+				Name:    GlobalSettingsConfigKind,
+			},
+			Spec: GlobalSettingsSpec{
+				ReportOnly: false,
+			},
+		},
+	)
 
 	time.Sleep(2 * time.Second) // let conf changes take effect
 

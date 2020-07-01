@@ -1,0 +1,23 @@
+version: "v0"
+kind: RateLimit
+name: "/foo/bar"
+description: "/foo/bar"
+rateLimitSpec:
+  limit:
+    count: 10
+    duration: 1m
+    enabled: true
+  conditions:
+    path: "/foo/bar"
+---
+version: "v0"
+kind: RateLimit
+name: "/foo/baz"
+description: "/foo/baz"
+rateLimitSpec:
+  limit:
+    count: 5
+    duration: 1m
+    enabled: false
+  conditions:
+    path: "/foo/baz"

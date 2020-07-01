@@ -1,0 +1,15 @@
+jails:
+  - route: "/foo/bar"
+    jail:
+      limit:
+        duration: 10s
+        enabled: true
+        count: 10
+      banDuration: 30s # Keep this duration short as it's used in tests
+  - route: "/foo/baz"
+    jail:
+      limit:
+        duration: 1m
+        enabled: false
+        count: 5
+      banDuration: 30s # Keep this duration short as it's used in tests

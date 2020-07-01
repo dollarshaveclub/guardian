@@ -3,10 +3,11 @@ package guardian
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"net/url"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // Jail is a namesake of a similar concept from fail2ban
@@ -15,7 +16,7 @@ import (
 // If the Limit is reached, the the IP will be banned for the BanDuration.
 type Jail struct {
 	Limit       Limit         `yaml:"limit"" json:"limit"`
-	BanDuration time.Duration `yaml:"ban_duration" json:"ban_duration"`
+	BanDuration time.Duration `yaml:"banDuration" json:"banDuration"`
 }
 
 func (j Jail) String() string {

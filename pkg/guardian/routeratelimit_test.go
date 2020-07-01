@@ -1,21 +1,35 @@
 package guardian
 
 import (
-	"net/url"
 	"reflect"
 	"testing"
 	"time"
 )
 
 func TestRouteLimitProvider(t *testing.T) {
-	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
-	route := url.URL{Path: "/foo/bar"}
-	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
+	route := "/foo/bar"
+	fooBarRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    route,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    2,
+				Duration: time.Minute,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: route,
+			},
+		},
+	}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
 
-	cs.SetRouteRateLimits(routeLimits)
+	cs.ApplyRateLimitConfig(fooBarRateLimit)
 	cs.UpdateCachedConf()
 
 	tests := []struct {
@@ -26,7 +40,7 @@ func TestRouteLimitProvider(t *testing.T) {
 		{
 			name:      "route with limit",
 			req:       Request{Path: "/foo/bar"},
-			wantLimit: fooBarRouteLimit,
+			wantLimit: fooBarRateLimit.Spec.Limit,
 		},
 		{
 			name:      "sub route without limit",
@@ -51,30 +65,59 @@ func TestRouteLimitProvider(t *testing.T) {
 }
 
 func TestRouteLimitProviderUpdates(t *testing.T) {
-	fooBarRouteLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
-	route := url.URL{Path: "/foo/bar"}
-	routeLimits := map[url.URL]Limit{route: fooBarRouteLimit}
+	route := "/foo/bar"
+	fooBarRateLimit := RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    route,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    2,
+				Duration: time.Minute,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: route,
+			},
+		},
+	}
 	globalLimit := Limit{Count: 2, Duration: time.Minute, Enabled: true}
 	cs, s := newTestConfStoreWithDefaults(t, nil, nil, globalLimit, false)
 	defer s.Close()
 
-	cs.SetRouteRateLimits(routeLimits)
+	cs.ApplyRateLimitConfig(fooBarRateLimit)
 	cs.UpdateCachedConf()
 
 	rlp := NewRouteRateLimitProvider(cs, TestingLogger)
 	gotLimit := rlp.GetLimit(Request{Path: "/foo/bar"})
-	if !reflect.DeepEqual(gotLimit, fooBarRouteLimit) {
-		t.Errorf("GetLimit() = %v, want %v", gotLimit, fooBarRouteLimit)
+	if !reflect.DeepEqual(gotLimit, fooBarRateLimit.Spec.Limit) {
+		t.Errorf("GetLimit() = %v, want %v", gotLimit, fooBarRateLimit.Spec.Limit)
 	}
 
-	fooBarRouteLimit = Limit{Count: 43, Duration: time.Minute, Enabled: true}
-
-	newRouteLimits := map[url.URL]Limit{route: fooBarRouteLimit}
-	cs.SetRouteRateLimits(newRouteLimits)
+	fooBarRateLimit = RateLimitConfig{
+		ConfigMetadata: ConfigMetadata{
+			Version: RateLimitConfigVersion,
+			Kind:    RateLimitConfigKind,
+			Name:    route,
+		},
+		Spec: RateLimitSpec{
+			Limit: Limit{
+				Count:    43,
+				Duration: time.Minute,
+				Enabled:  true,
+			},
+			Conditions: Conditions{
+				Path: route,
+			},
+		},
+	}
+	cs.ApplyRateLimitConfig(fooBarRateLimit)
 	cs.UpdateCachedConf()
 
 	gotLimit = rlp.GetLimit(Request{Path: "/foo/bar"})
-	if !reflect.DeepEqual(gotLimit, fooBarRouteLimit) {
-		t.Errorf("GetLimit() = %v, want %v", gotLimit, fooBarRouteLimit)
+	if !reflect.DeepEqual(gotLimit, fooBarRateLimit.Spec.Limit) {
+		t.Errorf("GetLimit() = %v, want %v", gotLimit, fooBarRateLimit.Spec.Limit)
 	}
 }
