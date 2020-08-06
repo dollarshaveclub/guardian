@@ -30,7 +30,7 @@ func newAcceptanceGuardianServer(t *testing.T, logger logrus.FieldLogger) (*Serv
 	if err != nil {
 		t.Fatalf("unexpected error creating RedisConfStore: %v", err)
 	}
-	redisCounter := NewRedisCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
+	redisCounter := NewFixedWindowCounter(redis, false, logger.WithField("context", "redis-counter"), NullReporter{})
 	go redisConfStore.RunSync(1*time.Second, stop)
 
 	whitelister := NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), NullReporter{})
@@ -113,6 +113,8 @@ func TestBasicFunctionality(t *testing.T) {
 
 	defer func() {
 		close(stop)
+		// Depending on the Counter implementation, we may need to give some time for miniredis Connections to terminate
+		time.Sleep(time.Second)
 		miniredis.Close()
 	}()
 
