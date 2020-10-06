@@ -10,6 +10,7 @@ static_resources:
           stat_prefix: ingress_http
           use_remote_address: false
           xff_num_trusted_hops: {{ .ENVOY_XFF_TRUSTED_HOPS }}
+          codec_type: AUTO
           route_config:
             name: local_route
             virtual_hosts:
@@ -41,36 +42,48 @@ static_resources:
                   timeout: { seconds: 60 }
           http_filters:
           - name: envoy.health_check
-            config: 
+            config:
               pass_through_mode: false
-              endpoint: {{ .ENVOY_HEALTH_CHECK_ENDPOINT }}
           - name: envoy.rate_limit
             config:
               domain: edge_proxy_per_ip
-              timeout: { nanos: {{ .ENVOY_RATELIMIT_FILTER_TIMEOUT_NANOS }} }
+              rate_limit_service:
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: guardian
           - name: envoy.router
+            config: {}
   clusters:
   - name: upstream
-    connect_timeout: { seconds: 5 }
-    type: STRICT_DNS
-    hosts:
-    - socket_address:
-        address: {{ .ENVOY_UPSTREAM_ADDRESS }}
-        port_value: {{ .ENVOY_UPSTREAM_PORT }}
-    lb_policy: ROUND_ROBIN
-  - name: guardian
-    connect_timeout: { seconds: 5 }
-    type: STRICT_DNS
-    hosts:
-    - socket_address:
-        address: {{ .ENVOY_RATELIMIT_ADDRESS }}
-        port_value: {{ .ENVOY_RATELIMIT_PORT }}
-    lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
-rate_limit_service:
-  grpc_service:
-    envoy_grpc:
-      cluster_name: guardian
+      type: STRICT_DNS
+      connect_timeout: 1s
+      lb_policy: ROUND_ROBIN
+      protocol_selection: USE_CONFIGURED_PROTOCOL
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: upstream
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: {{ .ENVOY_UPSTREAM_ADDRESS }}
+                      port_value: {{ .ENVOY_UPSTREAM_PORT }}
+    - name: guardian
+      type: STRICT_DNS
+      connect_timeout: 1s
+      lb_policy: ROUND_ROBIN
+      protocol_selection: USE_CONFIGURED_PROTOCOL
+      http2_protocol_options: {}
+      load_assignment:
+        cluster_name: guardian
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: {{ .ENVOY_RATELIMIT_ADDRESS }}
+                      port_value: {{ .ENVOY_RATELIMIT_PORT }}
 admin:
   access_log_path: /dev/null
   address:
