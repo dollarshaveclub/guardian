@@ -1,6 +1,6 @@
 FROM docker.io/envoyproxy/envoy-alpine:v1.14.3
 
-ENV ENVOY_LOG_LEVEL=info
+ENV ENVOY_LOG_LEVEL=trace
 ENV ENVOY_LISTEN_ADDRESS=0.0.0.0
 ENV ENVOY_LISTEN_PORT=8080
 ENV ENVOY_UPSTREAM_ADDRESS=upstream
@@ -21,7 +21,6 @@ RUN apk upgrade --update-cache \
 COPY envtpl /usr/local/bin/
 COPY envoy.yaml.tmpl /config/envoy.yaml.tmpl
 COPY run.sh /
-
 RUN chmod +x /run.sh
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
 	"os"
 	"os/signal"
@@ -128,6 +129,50 @@ func main() {
 	logger.Infof("starting server on %v", *address)
 	guardianServer := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
 	grpcServer := grpc.NewServer()
+
+	// 	var _RateLimitService_serviceDesc = grpc.ServiceDesc{
+	// 	ServiceName: "envoy.service.ratelimit.v2.RateLimitService",
+	// 	HandlerType: (*RateLimitServiceServer)(nil),
+	// 	Methods: []grpc.MethodDesc{
+	// 		{
+	// 			MethodName: "ShouldRateLimit",
+	// 			Handler:    _RateLimitService_ShouldRateLimit_Handler,
+	// 		},
+	// 	},
+	// 	Streams:  []grpc.StreamDesc{},
+	// 	Metadata: "envoy/service/ratelimit/v2/rls.proto",
+	// }
+
+	myHandler := func(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+		in := new(ratelimit.RateLimitRequest)
+		if err := dec(in); err != nil {
+			return nil, err
+		}
+		if interceptor == nil {
+			return srv.(ratelimit.RateLimitServiceServer).ShouldRateLimit(ctx, in)
+		}
+		info := &grpc.UnaryServerInfo{
+			Server:     srv,
+			FullMethod: "",
+		}
+		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.(ratelimit.RateLimitServiceServer).ShouldRateLimit(ctx, req.(*ratelimit.RateLimitRequest))
+		}
+		return interceptor(ctx, in, info, handler)
+	}
+
+	grpcServer.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "",
+		HandlerType: (*ratelimit.RateLimitServiceServer)(nil),
+		Methods: []grpc.MethodDesc{
+			{
+				MethodName: "ShouldRateLimit",
+				Handler:    myHandler,
+			},
+		},
+		Streams:  []grpc.StreamDesc{},
+		Metadata: "envoy/service/ratelimit/v2/rls.proto",
+	}, guardianServer)
 	ratelimit.RegisterRateLimitServiceServer(grpcServer, guardianServer)
 
 	wg.Add(1)

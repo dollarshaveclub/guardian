@@ -10,7 +10,7 @@ static_resources:
     type: STRICT_DNS
     connect_timeout: 10s
     lb_policy: ROUND_ROBIN
-    protocol_selection: USE_CONFIGURED_PROTOCOL
+    protocol_selection: USE_DOWNSTREAM_PROTOCOL
     http2_protocol_options: {}
     load_assignment:
       cluster_name: upstream
@@ -23,7 +23,7 @@ static_resources:
                     port_value: {{ .ENVOY_UPSTREAM_PORT }}
   - name: guardian
     type: STRICT_DNS
-    connect_timeout: 1s
+    connect_timeout: 10s
     lb_policy: ROUND_ROBIN
     protocol_selection: USE_CONFIGURED_PROTOCOL
     http2_protocol_options: {}
@@ -38,6 +38,10 @@ static_resources:
                     port_value: {{ .ENVOY_RATELIMIT_PORT }}
   listeners:
   - address:
+    # access_log:
+    #   - name: "envoy.access_loggers.file"
+    #     config:
+    #       path: "/dev/stdout"
       socket_address:
         address: {{ .ENVOY_LISTEN_ADDRESS }}
         port_value: {{ .ENVOY_LISTEN_PORT }}
@@ -50,10 +54,7 @@ static_resources:
           codec_type: auto
           stat_prefix: ingress_http
           http_filters:
-          - name: envoy.health_check
-            config:
-              pass_through_mode: false
-          - name: envoy.rate_limit
+          - name: envoy.filters.http.ratelimit
             config:
               domain: rl
               request_type: both # apply to both internal and external requests
@@ -63,7 +64,7 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: guardian
-          - name: envoy.router
+          - name: envoy.filters.http.router
             config: {}
           route_config:
             name: local_route
@@ -80,13 +81,13 @@ static_resources:
                       - actions:
                         - remote_address: {}
                         - request_headers:
-                            header_name: "authority"
+                            header_name: ":authority"
                             descriptor_key: "authority"
                         - request_headers:
-                            header_name: "method"
+                            header_name: ":method"
                             descriptor_key: "method"
                         - request_headers:
-                            header_name: "path"
+                            header_name: ":path"
                             descriptor_key: "path"
                         - request_headers:
                             header_name: "x-forwarded-for"
