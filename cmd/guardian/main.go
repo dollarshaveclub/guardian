@@ -126,23 +126,9 @@ func main() {
 	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, jailer, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)
-	guardianServer := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
+	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
 	grpcServer := grpc.NewServer()
-
-	grpcServer.RegisterService(&grpc.ServiceDesc{
-		ServiceName: "",
-		HandlerType: (*ratelimit.RateLimitServiceServer)(nil),
-		Methods: []grpc.MethodDesc{
-			{
-				MethodName: "ShouldRateLimit",
-				Handler:    myHandler,
-			},
-		},
-		Streams:  []grpc.StreamDesc{},
-		Metadata: "envoy/service/ratelimit/v2/rls.proto",
-	}, guardianServer)
-	ratelimit.RegisterRateLimitServiceServer(grpcServer, guardianServer)
-
+	ratelimit.RegisterRateLimitServiceServer(grpcServer, server)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

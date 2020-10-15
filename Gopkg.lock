@@ -460,7 +460,7 @@
   revision = "bcad7cf615f2882612cb74477f2a79e894de6dee"
 
 [[projects]]
-  digest = "1:654e60d7acf1e15777985e86d5c6fce4a64a4feef985ff0b0a739ce05eaf122a"
+  digest = "1:7b923348a15870a9e6fb525955d258b277afe971bf8fbfc91171d98beeefc4d1"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -509,6 +509,8 @@
     "keepalive",
     "metadata",
     "peer",
+    "reflection",
+    "reflection/grpc_reflection_v1alpha",
     "resolver",
     "serviceconfig",
     "stats",
@@ -639,6 +641,7 @@
     "github.com/pkg/errors",
     "github.com/sirupsen/logrus",
     "google.golang.org/grpc",
+    "google.golang.org/grpc/reflection",
     "gopkg.in/alecthomas/kingpin.v2",
     "gopkg.in/yaml.v2",
   ]

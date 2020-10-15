@@ -30,7 +30,7 @@ while [ $secs -ge 0 ]; do
 done
 
 printf "\nRunning tests...\n"
-SYNC=true go test ./e2e/
+SYNC=true go test -p 1 ./e2e/
 results=$?
 
 echo "Stopping sync guardian..."

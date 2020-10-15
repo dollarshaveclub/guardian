@@ -110,9 +110,29 @@ func TestShouldRateLimit(t *testing.T) {
 			}
 
 			er := test.expectedRes(test.req)
-			if diff := cmp.Diff(er, res); diff != "" {
+			if diff := cmp.Diff(er, res, cmp.Comparer(compapreRateLimitResponses)); diff != "" {
 				t.Fatalf("expected: %v, received: %v, diff: %v", er, res, diff)
 			}
 		})
 	}
+}
+
+// compareRateLimitResponses is a custom comparer to be used by go-cmp
+// go-cmp recommends using a custom comparer for types which we do not control in this repo, as changes to the implementatino  may change how the comparison behaves.
+func compapreRateLimitResponses(r1, r2 ratelimit.RateLimitResponse) bool {
+	results := []bool{}
+	results = append(results, cmp.Equal(r1.Headers, r2.Headers))
+	results = append(results, cmp.Equal(r1.OverallCode, r2.OverallCode))
+	results = append(results, cmp.Equal(r1.RequestHeadersToAdd, r2.RequestHeadersToAdd))
+	results = append(results, cmp.Equal(r1.Statuses, r2.Statuses, cmp.Comparer(compareRateLimitDescriptors)))
+	for _, res := range results {
+		if res == false {
+			return res
+		}
+	}
+	return true
+}
+
+func compareRateLimitDescriptors(rd1, rd2 ratelimit.RateLimitResponse_DescriptorStatus) bool {
+	return rd1.Code == rd2.Code
 }
