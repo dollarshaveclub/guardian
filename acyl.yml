@@ -31,5 +31,5 @@ dependencies:
       chart_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/envoy'
       chart_vars_repo_path: 'dollarshaveclub/guardian@master:.helm/releases/envoy-dqa.yaml'
       value_overrides:
-        - 'image.tag=v1.15.3'
+        - 'image.tag=v1.15.2'
         - 'replicaCount=1'

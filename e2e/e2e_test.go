@@ -26,6 +26,8 @@ import (
 var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
 var envoyAddr = flag.String("envoy-addr", "localhost:8080", "envoy address")
 
+const defaultAsyncCounterTimeout = 200 * time.Millisecond
+
 func TestWhitelist(t *testing.T) {
 	resetRedis(*redisAddr)
 
@@ -98,7 +100,7 @@ func TestGlobalRateLimit(t *testing.T) {
 
 	for i := uint64(0); i < 10; i++ {
 		if len(os.Getenv("SYNC")) == 0 {
-			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 		}
 
 		res := GET(t, "192.168.1.234", "/")
@@ -143,7 +145,7 @@ func TestRateLimit(t *testing.T) {
 		}
 		for i := uint64(0); i < config.Spec.Limit.Count+5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.234", config.Spec.Conditions.Path)
@@ -198,7 +200,7 @@ func TestJails(t *testing.T) {
 		applyGuardianConfig(t, *redisAddr, guardianConfig)
 		for i := 0; uint64(i) <= config.Spec.Limit.Count; i++ {
 			if os.Getenv("SYNC") != "" {
-				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.43", config.Spec.Conditions.Path)
@@ -293,7 +295,7 @@ func TestRateLimitDeprecated(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		if len(os.Getenv("SYNC")) == 0 {
-			time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 		}
 
 		res := GET(t, "192.168.1.234", "/")
@@ -336,7 +338,7 @@ func TestRouteRateLimitDeprecated(t *testing.T) {
 	for _, routeRateLimit := range rrlConfig.RouteRateLimits {
 		for i := uint64(0); i < routeRateLimit.Limit.Count+5; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(100 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.234", routeRateLimit.Route)
@@ -387,7 +389,7 @@ func TestJailsDeprecated(t *testing.T) {
 		applyGuardianConfigDeprecated(t, *redisAddr, config)
 		for i := uint64(0); i < j.Jail.Limit.Count+1; i++ {
 			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(150 * time.Millisecond) // helps prevents races due asynchronous rate limiting
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
 			res := GET(t, "192.168.1.43", j.Route)
