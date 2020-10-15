@@ -15,7 +15,7 @@ import (
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/dollarshaveclub/guardian/internal/version"
 	"github.com/dollarshaveclub/guardian/pkg/guardian"
-	"github.com/dollarshaveclub/guardian/pkg/rate_limit_grpc"
+	ratelimit "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v2"
 	"github.com/go-redis/redis"
 
 	"github.com/sirupsen/logrus"
@@ -126,8 +126,22 @@ func main() {
 	condFuncChain := guardian.DefaultCondChain(whitelister, blacklister, jailer, ipRateLimiter, routeRateLimiter)
 
 	logger.Infof("starting server on %v", *address)
-	server := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
-	grpcServer := rate_limit_grpc.NewRateLimitServer(server)
+	guardianServer := guardian.NewServer(condFuncChain, redisConfStore, logger.WithField("context", "server"), reporter)
+	grpcServer := grpc.NewServer()
+
+	grpcServer.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "",
+		HandlerType: (*ratelimit.RateLimitServiceServer)(nil),
+		Methods: []grpc.MethodDesc{
+			{
+				MethodName: "ShouldRateLimit",
+				Handler:    myHandler,
+			},
+		},
+		Streams:  []grpc.StreamDesc{},
+		Metadata: "envoy/service/ratelimit/v2/rls.proto",
+	}, guardianServer)
+	ratelimit.RegisterRateLimitServiceServer(grpcServer, guardianServer)
 
 	wg.Add(1)
 	go func() {
