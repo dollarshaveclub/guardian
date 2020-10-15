@@ -1,9 +1,11 @@
-// Commands from http://redis.io/commands#server
+// Commands from https://redis.io/commands#server
 
 package miniredis
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alicebob/miniredis/server"
 )
@@ -12,6 +14,7 @@ func commandsServer(m *Miniredis) {
 	m.srv.Register("DBSIZE", m.cmdDbsize)
 	m.srv.Register("FLUSHALL", m.cmdFlushall)
 	m.srv.Register("FLUSHDB", m.cmdFlushdb)
+	m.srv.Register("TIME", m.cmdTime)
 }
 
 // DBSIZE
@@ -22,6 +25,9 @@ func (m *Miniredis) cmdDbsize(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c) {
 		return
 	}
 
@@ -42,8 +48,10 @@ func (m *Miniredis) cmdFlushall(c *server.Peer, cmd string, args []string) {
 		c.WriteError(msgSyntaxError)
 		return
 	}
-
 	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c) {
 		return
 	}
 
@@ -63,13 +71,44 @@ func (m *Miniredis) cmdFlushdb(c *server.Peer, cmd string, args []string) {
 		c.WriteError(msgSyntaxError)
 		return
 	}
-
 	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c) {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		m.db(ctx.selectedDB).flush()
 		c.WriteOK()
+	})
+}
+
+// TIME
+func (m *Miniredis) cmdTime(c *server.Peer, cmd string, args []string) {
+	if len(args) > 0 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c) {
+		return
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		now := m.now
+		if now.IsZero() {
+			now = time.Now()
+		}
+		nanos := now.UnixNano()
+		seconds := nanos / 1000000000
+		microseconds := (nanos / 1000) % 1000000
+
+		c.WriteLen(2)
+		c.WriteBulk(strconv.FormatInt(seconds, 10))
+		c.WriteBulk(strconv.FormatInt(microseconds, 10))
 	})
 }
