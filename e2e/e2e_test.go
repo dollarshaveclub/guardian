@@ -6,6 +6,7 @@ import (
 	"go/build"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,12 +27,11 @@ import (
 var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
 var envoyAddr = flag.String("envoy-addr", "localhost:8080", "envoy address")
 
-const defaultAsyncCounterTimeout = 200 * time.Millisecond
+const defaultAsyncCounterTimeout = 300 * time.Millisecond
 
 func TestWhitelist(t *testing.T) {
 	resetRedis(*redisAddr)
-
-	IP := "192.168.1.234"
+	IP := pseudoRandomIPV4Address()
 	CIDR := fmt.Sprintf("%v/32", IP)
 	config := guardianConfig{
 		whitelist:                 []string{CIDR},
@@ -54,8 +54,7 @@ func TestWhitelist(t *testing.T) {
 
 func TestBlacklist(t *testing.T) {
 	resetRedis(*redisAddr)
-
-	IP := "192.168.1.234"
+	IP := pseudoRandomIPV4Address()
 	CIDR := fmt.Sprintf("%v/32", IP)
 	config := guardianConfig{
 		whitelist:                 []string{},
@@ -78,7 +77,7 @@ func TestBlacklist(t *testing.T) {
 
 func TestGlobalRateLimit(t *testing.T) {
 	resetRedis(*redisAddr)
-
+	IP := pseudoRandomIPV4Address()
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
 		blacklist:                 []string{},
@@ -103,7 +102,7 @@ func TestGlobalRateLimit(t *testing.T) {
 			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 		}
 
-		res := GET(t, "192.168.1.234", "/")
+		res := GET(t, IP, "/")
 		res.Body.Close()
 
 		want := 200
@@ -119,7 +118,7 @@ func TestGlobalRateLimit(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	resetRedis(*redisAddr)
-
+	IP := pseudoRandomIPV4Address()
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
 		blacklist:                 []string{},
@@ -148,7 +147,7 @@ func TestRateLimit(t *testing.T) {
 				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
-			res := GET(t, "192.168.1.234", config.Spec.Conditions.Path)
+			res := GET(t, IP, config.Spec.Conditions.Path)
 			res.Body.Close()
 
 			want := 200
@@ -282,7 +281,7 @@ func TestDeleteJail(t *testing.T) {
 
 func TestRateLimitDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
-
+	IP := pseudoRandomIPV4Address()
 	config := guardianConfig{
 		whitelist:               []string{},
 		blacklist:               []string{},
@@ -298,7 +297,7 @@ func TestRateLimitDeprecated(t *testing.T) {
 			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 		}
 
-		res := GET(t, "192.168.1.234", "/")
+		res := GET(t, IP, "/")
 		res.Body.Close()
 
 		want := 200
@@ -314,6 +313,7 @@ func TestRateLimitDeprecated(t *testing.T) {
 
 func TestRouteRateLimitDeprecated(t *testing.T) {
 	resetRedis(*redisAddr)
+	IP := pseudoRandomIPV4Address()
 	config := guardianConfig{
 		whitelist:                          []string{},
 		blacklist:                          []string{},
@@ -341,7 +341,7 @@ func TestRouteRateLimitDeprecated(t *testing.T) {
 				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
 			}
 
-			res := GET(t, "192.168.1.234", routeRateLimit.Route)
+			res := GET(t, IP, routeRateLimit.Route)
 			res.Body.Close()
 
 			want := 200
@@ -709,6 +709,16 @@ func applyGuardianConfigDeprecated(t *testing.T, redisAddr string, c guardianCon
 	}
 
 	time.Sleep(2 * time.Second)
+}
+
+func pseudoRandomIPV4Address() string {
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	buf := make([]byte, 4)
+	n, err := r.Read(buf)
+	if n != 4 || err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", buf[0], buf[1], buf[2], buf[3])
 }
 
 // listType one of blacklist whitelist

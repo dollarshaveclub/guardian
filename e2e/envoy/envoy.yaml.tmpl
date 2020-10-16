@@ -55,6 +55,7 @@ static_resources:
               domain: rl
               request_type: both # apply to both internal and external requests
               failure_mode_deny: false
+              timeout: { nanos: {{ .ENVOY_RATELIMIT_FILTER_TIMEOUT_NANOS }} }
               stage: 0
               rate_limit_service:
                 grpc_service:
@@ -73,6 +74,7 @@ static_resources:
                       prefix: "/"
                   route:
                     cluster: upstream
+                    timeout: { seconds: 60 }
                     rate_limits:
                       - actions:
                         - remote_address: {}
