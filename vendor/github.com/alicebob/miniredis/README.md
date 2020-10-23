@@ -18,6 +18,41 @@ There are no dependencies on external binaries, so you can easily integrate it i
 
 ## Changelog
 
+### v2.7.0
+
+SWAPDB
+
+### v2.6.0
+
+PUBSUB (thanks @Al2Klimov)
+
+### v2.5.0
+
+Added ZPopMin and ZPopMax
+
+### v2.4.6
+
+support for TIME (thanks @leon-barrett and @lirao)
+support for ZREVRANGEBYLEX
+fix for SINTER (thanks @robstein)
+updates for latest redis
+
+### 2.4.4
+
+Fixed nil Lua return value (#43)
+
+### 2.4.3
+
+Fixed using Lua with authenticated redis.
+
+### 2.4.2
+
+Changed redigo import path.
+
+### 2.4
+
+Minor cleanups. Miniredis now requires Go >= 1.9 (only for the tests. If you don't run the tests you can use an older Go version).
+
 ### 2.3.1
 
 Lua changes: added `cjson` library, and `redis.sha1hex()`.
@@ -43,7 +78,7 @@ This should be the change needed to upgrade:
 1.0:
 
     m.Expire() == 4
-   
+
 2.0:
 
     m.TTL() == 4 * time.Second
@@ -60,8 +95,9 @@ Implemented commands:
    - ECHO
    - PING
    - SELECT
+   - SWAPDB
    - QUIT
- - Key 
+ - Key
    - DEL
    - EXISTS
    - EXPIRE
@@ -88,6 +124,7 @@ Implemented commands:
    - DBSIZE
    - FLUSHALL
    - FLUSHDB
+   - TIME -- returns time.Now() or value set by SetTime()
  - String keys (complete)
    - APPEND
    - BITCOUNT
@@ -145,6 +182,13 @@ Implemented commands:
    - RPOPLPUSH
    - RPUSH
    - RPUSHX
+ - Pub/Sub (complete)
+   - PSUBSCRIBE
+   - PUBLISH
+   - PUBSUB
+   - PUNSUBSCRIBE
+   - SUBSCRIBE
+   - UNSUBSCRIBE
  - Set keys (complete)
    - SADD
    - SCARD
@@ -168,6 +212,8 @@ Implemented commands:
    - ZINCRBY
    - ZINTERSTORE
    - ZLEXCOUNT
+   - ZPOPMIN
+   - ZPOPMAX
    - ZRANGE
    - ZRANGEBYLEX
    - ZRANGEBYSCORE
@@ -177,6 +223,7 @@ Implemented commands:
    - ZREMRANGEBYRANK
    - ZREMRANGEBYSCORE
    - ZREVRANGE
+   - ZREVRANGEBYLEX
    - ZREVRANGEBYSCORE
    - ZREVRANK
    - ZSCORE
@@ -189,15 +236,22 @@ Implemented commands:
    - SCRIPT EXISTS
    - SCRIPT FLUSH
 
+## TTLs, key expiration, and time
 
 Since miniredis is intended to be used in unittests TTLs don't decrease
 automatically. You can use `TTL()` to get the TTL (as a time.Duration) of a
-key. It will return 0 when no TTL is set. EXPIREAT and PEXPIREAT values will be
+key. It will return 0 when no TTL is set.
+
+`m.FastForward(d)` can be used to decrement all TTLs. All TTLs which become <=
+0 will be removed.
+
+EXPIREAT and PEXPIREAT values will be
 converted to a duration. For that you can either set m.SetTime(t) to use that
 time as the base for the (P)EXPIREAT conversion, or don't call SetTime(), in
 which case time.Now() will be used.
-`m.FastForward(d)` can be used to decrement all TTLs. All TTLs which become <=
-0 will be removed.
+
+SetTime() also sets the value returned by TIME, which defaults to time.Now().
+It is not updated by FastForward, only by SetTime.
 
 ## Example
 
@@ -214,7 +268,7 @@ func TestSomething(t *testing.T) {
 	s.HSet("some", "other", "key")
 
 	// Run your code and see if it behaves.
-	// An example using the redigo library from "github.com/garyburd/redigo/redis":
+	// An example using the redigo library from "github.com/gomodule/redigo/redis":
 	c, err := redis.Dial("tcp", s.Addr())
 	_, err = c.Do("SET", "foo", "bar")
 
@@ -260,13 +314,6 @@ Commands which will probably not be implemented:
     - ~~OBJECT~~
     - ~~RESTORE~~
     - ~~WAIT~~
- - Pub/Sub (all)
-    - ~~PSUBSCRIBE~~
-    - ~~PUBLISH~~
-    - ~~PUBSUB~~
-    - ~~PUNSUBSCRIBE~~
-    - ~~SUBSCRIBE~~
-    - ~~UNSUBSCRIBE~~
  - Scripting
     - ~~SCRIPT DEBUG~~
     - ~~SCRIPT KILL~~
@@ -286,14 +333,13 @@ Commands which will probably not be implemented:
     - ~~SLAVEOF~~
     - ~~SLOWLOG~~
     - ~~SYNC~~
-    - ~~TIME~~
-    
+
 
 ## &c.
 
-See https://github.com/alicebob/miniredis_vs_redis for tests comparing
-miniredis against the real thing. Tests are run against Redis 4.0.6 (Debian).
+Tests are run against Redis 5.0.3. The [./integration](./integration/) subdir
+compares miniredis against a real redis instance.
 
 
-[![Build Status](https://travis-ci.org/alicebob/miniredis.svg?branch=master)](https://travis-ci.org/alicebob/miniredis) 
+[![Build Status](https://travis-ci.org/alicebob/miniredis.svg?branch=master)](https://travis-ci.org/alicebob/miniredis)
 [![GoDoc](https://godoc.org/github.com/alicebob/miniredis?status.svg)](https://godoc.org/github.com/alicebob/miniredis)
