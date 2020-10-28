@@ -82,7 +82,7 @@ func TestCondStopOnBlacklist(t *testing.T) {
 		t.Fatalf("expected: %v received: %v", expectedErr, err)
 	}
 	if resp != expectedResp {
-		t.Fatalf("expected: %v received: %v", expectedResp, resp)
+		t.Fatalf("expected: %v received: %v", expectedResp.String(), resp.String())
 	}
 	if remaining != expectedRemaining {
 		t.Fatalf("expected: %v received: %v", expectedRemaining, remaining)

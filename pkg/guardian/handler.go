@@ -11,17 +11,18 @@ const RequestsRemainingMax = math.MaxUint32
 type RequestBlockerFunc func(context.Context, Request) (bool, uint32, error)
 
 // RequestBlockerResp is a type that informs the caller when to stop processing the request, and if the request should be blocked or not.
-type RequestBlockerResp string
+//go:generate stringer -type=RequestBlockerResp
+type RequestBlockerResp int
 
 const (
 	// AllowedStop indicates that the request is allowed and that the chain should stop processing.
-	AllowedStop RequestBlockerResp = "ALLOWED_STOP"
+	AllowedStop RequestBlockerResp = iota
 
 	// AllowedContinue indicates that the request should be allowed and that the chain should continue processing the request.
-	AllowedContinue RequestBlockerResp = "ALLOWED_CONTINUE"
+	AllowedContinue
 
 	// BlockedStop indicates that the request should be blocked and that the chain should stop processing the request.
-	BlockedStop RequestBlockerResp = "BLOCKED_STOP"
+	BlockedStop
 )
 
 // RateLimiter can determine if a request should continue processing, if a request should be blocked, and how many requests are remaining

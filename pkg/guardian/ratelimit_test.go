@@ -73,10 +73,10 @@ func TestLimitRateLimits(t *testing.T) {
 
 		expectedBlocked := (limit.Count < uint64(i+1))
 		if expectedBlocked && resp != BlockedStop {
-			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp)
+			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp.String())
 		}
 		if !expectedBlocked && resp == BlockedStop {
-			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp)
+			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp.String())
 		}
 
 		expectedRemaining := limit.Count - uint64(i+1)
@@ -106,7 +106,7 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 		}
 
 		if resp == BlockedStop {
-			t.Fatalf("expected blocked: %v, received: %v", BlockedStop, resp)
+			t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
 		}
 
 		expectedRemaining := RequestsRemainingMax
@@ -134,10 +134,10 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 
 		expectedBlocked := (limit.Count < uint64(i+1))
 		if expectedBlocked && resp != BlockedStop {
-			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp)
+			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp.String())
 		}
 		if !expectedBlocked && resp == BlockedStop {
-			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp)
+			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp.String())
 		}
 
 		expectedRemaining := limit.Count - uint64(i+1)
@@ -156,7 +156,7 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	}
 
 	if resp == BlockedStop {
-		t.Fatalf("expected blocked: %v, received blocked: %v", false, resp)
+		t.Fatalf("expected: %v, received: %v", BlockedStop.String(), resp.String())
 	}
 	if remaining != uint32(limit.Count-1) {
 		t.Fatalf("remaining was %d when it should have been %d", remaining, uint32(limit.Count-1))
@@ -181,7 +181,7 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	}
 
 	if resp == BlockedStop {
-		t.Fatalf("expected blocked: %v, received blocked: %v", false, resp)
+		t.Fatalf("expected blocked: %v, received blocked: %v", BlockedStop.String(), resp.String())
 	}
 
 	if remaining != ^uint32(0) {
@@ -224,7 +224,7 @@ func TestLimitRateLimitsOnBlock(t *testing.T) {
 	}
 
 	if resp != BlockedStop {
-		t.Fatalf("expected blocked: %v, received: %v", BlockedStop, resp)
+		t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
 	}
 }
 
@@ -250,7 +250,7 @@ func TestRouteRateLimiter(t *testing.T) {
 
 		// Since the route doesn't have a limit, the limiter should suggest that the request should continue to be processed
 		if resp != AllowedContinue {
-			t.Fatalf("expected response: %v, received: %v", AllowedContinue, resp)
+			t.Fatalf("expected response: %v, received: %v", AllowedContinue.String(), resp.String())
 		}
 
 		// Ensure routes with limits do get blocked at the appropriate time
@@ -261,10 +261,10 @@ func TestRouteRateLimiter(t *testing.T) {
 
 		expectedBlocked := (fooBarRouteLimit.Count < uint64(i+1))
 		if expectedBlocked && resp != BlockedStop {
-			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp)
+			t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
 		}
 		if expectedBlocked == false && resp != AllowedStop {
-			t.Fatalf("expected response: %v, receieved: %v", AllowedStop, resp)
+			t.Fatalf("expected response: %v, receieved: %v", AllowedStop.String(), resp.String())
 		}
 
 		expectedRemaining := fooBarRouteLimit.Count - uint64(i+1)

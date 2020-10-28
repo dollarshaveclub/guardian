@@ -111,11 +111,11 @@ func TestCondBlockerFromRateLimiter(t *testing.T) {
 	}
 	resp, _, _ := CondBlockerFromRateLimiter(handlerBlocked)(context.Background(), Request{})
 	if resp != BlockedStop {
-		t.Fatalf("expected %v, received: %v", AllowedStop, resp)
+		t.Fatalf("expected %v, received: %v", AllowedStop.String(), resp.String())
 	}
 
 	resp, _, _ = CondBlockerFromRateLimiter(handlerErr)(context.Background(), Request{})
 	if resp != AllowedStop {
-		t.Fatalf("expected %v, received: %v", AllowedStop, resp)
+		t.Fatalf("expected %v, received: %v", AllowedStop.String(), resp.String())
 	}
 }
