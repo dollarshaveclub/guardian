@@ -32,15 +32,15 @@ type Jailer interface {
 // CondStopOnBanned uses a jailer to determine if a request should be blocked or not. It will also stop further processing
 // on the request if the client ip is banned.
 func CondStopOnBanned(jailer Jailer) CondRequestBlockerFunc {
-	return func(ctx context.Context, req Request) (bool, bool, uint32, error) {
+	return func(ctx context.Context, req Request) (RequestBlockerResp, uint32, error) {
 		banned, err := jailer.IsBanned(ctx, req)
 		if err != nil {
-			return false, false, RequestsRemainingMax, errors.Wrap(err, "error checking if request is banned")
+			return AllowedContinue, RequestsRemainingMax, errors.Wrap(err, "error checking if request is banned")
 		}
 		if banned {
-			return true, true, 0, nil
+			return BlockedStop, 0, nil
 		}
-		return false, false, RequestsRemainingMax, nil
+		return AllowedContinue, RequestsRemainingMax, nil
 	}
 }
 

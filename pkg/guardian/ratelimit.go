@@ -51,10 +51,12 @@ type GenericRateLimiter struct {
 	OnRateLimitHandled []RateLimitHook
 }
 
-// Limit limits a request if request exceeds rate limit
-func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (bool, uint32, error) {
+// Limit will recommend to block a request if the request exceeds the rate limit.
+// Limit is intended to be one of many function calls made to determine if a request should be blocked.
+// So we indicate in the response whether the request should be blocked and if the caller should continue processing this request.
+func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (RequestBlockerResp, uint32, error) {
 	if rl.KeyFunc == nil || rl.LimitProvider == nil || rl.Counter == nil || rl.Logger == nil {
-		return false, math.MaxUint32, nil
+		return AllowedStop, math.MaxUint32, nil
 	}
 
 	start := time.Now().UTC()
@@ -65,14 +67,14 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 		for _, hook := range rl.OnRateLimitHandled {
 			hook(request, limit, ratelimited, time.Since(start), err)
 		}
-
 	}()
 
 	limit = rl.LimitProvider.GetLimit(request)
 	rl.Logger.Debugf("fetched limit %v for request %v", limit, request.Path)
 	if !limit.Enabled {
 		rl.Logger.Debugf("limit not enabled for request %v, allowing", request)
-		return false, math.MaxUint32, nil
+		// we didn't find a matching limit for this request, so we should allow this but continue processing
+		return AllowedContinue, math.MaxUint32, nil
 	}
 
 	key := SlotKey(rl.KeyFunc(request), time.Now().UTC(), limit.Duration)
@@ -82,13 +84,13 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error incrementing counter for request %v", request))
 		rl.Logger.WithError(err).Error("counter returned error when call incr")
-		return false, 0, err
+		return AllowedStop, 0, err
 	}
 
 	ratelimited = blocked || currCount > limit.Count
 	if ratelimited {
 		rl.Logger.Debugf("request %v blocked", request)
-		return ratelimited, 0, err // block request, rate limited
+		return BlockedStop, 0, err // block request, rate limited
 	}
 
 	remaining64 := limit.Count - currCount
@@ -98,8 +100,9 @@ func (rl *GenericRateLimiter) Limit(context context.Context, request Request) (b
 		remaining32 = math.MaxUint32
 	}
 
+	// the request has been allowed, but since we have found a corresponding limit we should stop processing the request
 	rl.Logger.Debugf("request %v allowed with %v remaining requests", request, remaining32)
-	return ratelimited, remaining32, err
+	return AllowedStop, remaining32, err
 }
 
 // SlotKey generates the key for a slot determined by the request, slot time, and limit duration

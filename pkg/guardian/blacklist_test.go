@@ -72,21 +72,17 @@ func TestCondStopOnBlacklist(t *testing.T) {
 
 	condFunc := CondStopOnBlacklistFunc(blacklister)
 
-	stop, blocked, remaining, err := condFunc(context.Background(), Request{RemoteAddress: "10.0.0.2"})
+	resp, remaining, err := condFunc(context.Background(), Request{RemoteAddress: "10.0.0.2"})
 
 	expectedErr := error(nil)
-	expectedStop := true
-	expectedBlock := true
+	expectedResp := BlockedStop
 	expectedRemaining := uint32(RequestsRemainingMax)
 
 	if err != expectedErr {
 		t.Fatalf("expected: %v received: %v", expectedErr, err)
 	}
-	if stop != expectedStop {
-		t.Fatalf("expected: %v received: %v", expectedStop, stop)
-	}
-	if blocked != expectedBlock {
-		t.Fatalf("expected: %v received: %v", expectedBlock, blocked)
+	if resp != expectedResp {
+		t.Fatalf("expected: %v received: %v", expectedResp, resp)
 	}
 	if remaining != expectedRemaining {
 		t.Fatalf("expected: %v received: %v", expectedRemaining, remaining)
