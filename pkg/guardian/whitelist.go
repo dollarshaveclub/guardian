@@ -26,17 +26,17 @@ func IPNetsFromStrings(ipNetStrs []string, logger logrus.FieldLogger) []net.IPNe
 }
 
 func CondStopOnWhitelistFunc(whitelister *IPWhitelister) CondRequestBlockerFunc {
-	f := func(context context.Context, req Request) (bool, bool, uint32, error) {
+	f := func(context context.Context, req Request) (RequestBlockerResp, uint32, error) {
 		whitelisted, err := whitelister.IsWhitelisted(context, req)
 		if err != nil {
-			return false, false, 0, errors.Wrap(err, "error checking if request is whitelisted")
+			return AllowedContinue, 0, errors.Wrap(err, "error checking if request is whitelisted")
 		}
 
 		if whitelisted {
-			return true, false, RequestsRemainingMax, nil
+			return AllowedStop, RequestsRemainingMax, nil
 		}
 
-		return false, false, RequestsRemainingMax, nil
+		return AllowedContinue, RequestsRemainingMax, nil
 	}
 
 	return f

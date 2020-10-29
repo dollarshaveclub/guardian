@@ -11,17 +11,17 @@ import (
 )
 
 func CondStopOnBlacklistFunc(blacklister *IPBlacklister) CondRequestBlockerFunc {
-	f := func(context context.Context, req Request) (bool, bool, uint32, error) {
+	f := func(context context.Context, req Request) (RequestBlockerResp, uint32, error) {
 		blacklisted, err := blacklister.IsBlacklisted(context, req)
 		if err != nil {
-			return false, false, 0, errors.Wrap(err, "error checking if request is blacklisted")
+			return AllowedContinue, 0, errors.Wrap(err, "error checking if request is blacklisted")
 		}
 
 		if blacklisted {
-			return true, true, RequestsRemainingMax, nil
+			return BlockedStop, RequestsRemainingMax, nil
 		}
 
-		return false, false, RequestsRemainingMax, nil
+		return AllowedContinue, RequestsRemainingMax, nil
 	}
 
 	return f

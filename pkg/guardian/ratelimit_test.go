@@ -66,14 +66,17 @@ func TestLimitRateLimits(t *testing.T) {
 	sentCount := 10
 
 	for i := 0; i < sentCount; i++ {
-		blocked, remaining, err := rl.Limit(context.Background(), req)
+		resp, remaining, err := rl.Limit(context.Background(), req)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 
 		expectedBlocked := (limit.Count < uint64(i+1))
-		if blocked != expectedBlocked {
-			t.Fatalf("expected blocked: %v, received blocked: %v", expectedBlocked, blocked)
+		if expectedBlocked && resp != BlockedStop {
+			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp.String())
+		}
+		if !expectedBlocked && resp == BlockedStop {
+			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp.String())
 		}
 
 		expectedRemaining := limit.Count - uint64(i+1)
@@ -97,14 +100,13 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 	sentCount := 10
 
 	for i := 0; i < sentCount; i++ {
-		blocked, remaining, err := rl.Limit(context.Background(), req)
+		resp, remaining, err := rl.Limit(context.Background(), req)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		expectedBlocked := false
-		if blocked != expectedBlocked {
-			t.Fatalf("expected blocked: %v, received blocked: %v", expectedBlocked, blocked)
+		if resp == BlockedStop {
+			t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
 		}
 
 		expectedRemaining := RequestsRemainingMax
@@ -115,7 +117,6 @@ func TestDisableLimitDoesNotRateLimit(t *testing.T) {
 }
 
 func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
-
 	// 3 rps
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 	flp := &FakeGlobalLimitProvider{limit}
@@ -126,14 +127,17 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	sentCount := 10
 
 	for i := 0; i < sentCount; i++ {
-		blocked, remaining, err := rl.Limit(context.Background(), req)
+		resp, remaining, err := rl.Limit(context.Background(), req)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		expectedBlocked := (limit.Count < uint64(i+1))
-		if blocked != expectedBlocked {
-			t.Fatalf("expected blocked: %v, received blocked: %v", expectedBlocked, blocked)
+		if expectedBlocked && resp != BlockedStop {
+			t.Fatalf("expected blocked: %v, received: %v", expectedBlocked, resp.String())
+		}
+		if !expectedBlocked && resp == BlockedStop {
+			t.Fatalf("expected blocked: %v, receieved: %v", expectedBlocked, resp.String())
 		}
 
 		expectedRemaining := limit.Count - uint64(i+1)
@@ -146,13 +150,13 @@ func TestLimitRateLimitsButThenAllowsAgain(t *testing.T) {
 	}
 
 	time.Sleep(limit.Duration)
-	blocked, remaining, err := rl.Limit(context.Background(), req)
+	resp, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if blocked != false {
-		t.Fatalf("expected blocked: %v, received blocked: %v", false, blocked)
+	if resp == BlockedStop {
+		t.Fatalf("expected: %v, received: %v", BlockedStop.String(), resp.String())
 	}
 	if remaining != uint32(limit.Count-1) {
 		t.Fatalf("remaining was %d when it should have been %d", remaining, uint32(limit.Count-1))
@@ -171,14 +175,15 @@ func TestLimitRemainingOfflowUsesMaxUInt32(t *testing.T) {
 	slot := SlotKey(IPRateLimiterKeyFunc(req), time.Now().UTC(), limit.Duration)
 	fstore.count[slot] = uint64(^uint32(0)) << 5 // set slot count to some value > max uint32
 
-	blocked, remaining, err := rl.Limit(context.Background(), req)
+	resp, remaining, err := rl.Limit(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if blocked != false {
-		t.Fatalf("expected blocked: %v, received blocked: %v", false, blocked)
+	if resp == BlockedStop {
+		t.Fatalf("expected blocked: %v, received blocked: %v", BlockedStop.String(), resp.String())
 	}
+
 	if remaining != ^uint32(0) {
 		t.Fatalf("remaining was %d when it should have been %d", remaining, ^uint32(0))
 	}
@@ -194,18 +199,17 @@ func TestLimitFailsOpen(t *testing.T) {
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
-	blocked, _, err := rl.Limit(context.Background(), req)
+	resp, _, err := rl.Limit(context.Background(), req)
 	if err == nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if blocked != false {
+	if resp == BlockedStop {
 		t.Error("failed closed when it should have failed open")
 	}
 }
 
 func TestLimitRateLimitsOnBlock(t *testing.T) {
-
 	// 3 rps
 	limit := Limit{Count: 3, Duration: 1 * time.Second, Enabled: true}
 	flp := &FakeGlobalLimitProvider{limit}
@@ -214,14 +218,13 @@ func TestLimitRateLimitsOnBlock(t *testing.T) {
 
 	req := Request{RemoteAddress: "192.168.1.2"}
 
-	blocked, _, err := rl.Limit(context.Background(), req)
+	resp, _, err := rl.Limit(context.Background(), req)
 	if err != nil {
 		t.Fatalf("expected error but received nothing")
 	}
 
-	expected := true
-	if blocked != expected {
-		t.Fatalf("expected: %v received: %v", expected, blocked)
+	if resp != BlockedStop {
+		t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
 	}
 }
 
@@ -240,20 +243,28 @@ func TestRouteRateLimiter(t *testing.T) {
 	sentCount := 10
 	for i := 0; i < sentCount; i++ {
 		// Ensure routes without limits do not get blocked by this rate limiter
-		blocked, remaining, err := rl.Limit(context.Background(), fooReq)
-		if err != nil || blocked == true {
+		resp, remaining, err := rl.Limit(context.Background(), fooReq)
+		if err != nil || resp == BlockedStop {
 			t.Fatalf("unexpected error or blocked request, expected no blocking for request %v", fooReq)
 		}
 
+		// Since the route doesn't have a limit, the limiter should suggest that the request should continue to be processed
+		if resp != AllowedContinue {
+			t.Fatalf("expected response: %v, received: %v", AllowedContinue.String(), resp.String())
+		}
+
 		// Ensure routes with limits do get blocked at the appropriate time
-		blocked, remaining, err = rl.Limit(context.Background(), fooBarReq)
+		resp, remaining, err = rl.Limit(context.Background(), fooBarReq)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		expectedBlocked := (fooBarRouteLimit.Count < uint64(i+1))
-		if blocked != expectedBlocked {
-			t.Fatalf("expected blocked: %v, received blocked: %v", expectedBlocked, blocked)
+		if expectedBlocked && resp != BlockedStop {
+			t.Fatalf("expected blocked: %v, received: %v", BlockedStop.String(), resp.String())
+		}
+		if expectedBlocked == false && resp != AllowedStop {
+			t.Fatalf("expected response: %v, receieved: %v", AllowedStop.String(), resp.String())
 		}
 
 		expectedRemaining := fooBarRouteLimit.Count - uint64(i+1)

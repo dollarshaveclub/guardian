@@ -10,12 +10,28 @@ const RequestsRemainingMax = math.MaxUint32
 // RequestBlockerFunc is a function that evaluates a given request and determines if it should be blocked or not and how many requests are remaining.
 type RequestBlockerFunc func(context.Context, Request) (bool, uint32, error)
 
+// RequestBlockerResp is a type that informs the caller when to stop processing the request, and if the request should be blocked or not.
+//go:generate stringer -type=RequestBlockerResp
+type RequestBlockerResp int
+
+const (
+	// AllowedStop indicates that the request is allowed and that the chain should stop processing.
+	AllowedStop RequestBlockerResp = iota
+
+	// AllowedContinue indicates that the request should be allowed and that the chain should continue processing the request.
+	AllowedContinue
+
+	// BlockedStop indicates that the request should be blocked and that the chain should stop processing the request.
+	BlockedStop
+)
+
+// RateLimiter can determine if a request should continue processing, if a request should be blocked, and how many requests are remaining
 type RateLimiter interface {
-	Limit(context.Context, Request) (bool, uint32, error)
+	Limit(ctx context.Context, req Request) (resp RequestBlockerResp, remaining uint32, err error)
 }
 
 // CondRequestBlockerFunc is the same as a RequestBlockerFunc with the added ability to indicate that the evaluation of a chain should stop
-type CondRequestBlockerFunc func(context.Context, Request) (stop, blocked bool, remaining uint32, err error)
+type CondRequestBlockerFunc func(context.Context, Request) (resp RequestBlockerResp, remaining uint32, err error)
 
 // DefaultCondChain is the default condition chain used by Guardian. This performs the following checks when
 // processing a request: whitelist, blacklist, rate limiters.
@@ -25,7 +41,7 @@ func DefaultCondChain(whitelister *IPWhitelister, blacklister *IPBlacklister, ja
 	condJailerFunc := CondStopOnBanned(jailer)
 	rbfs := []CondRequestBlockerFunc{condWhitelistFunc, condBlacklistFunc, condJailerFunc}
 	for _, rl := range rateLimiters {
-		rbfs = append(rbfs, CondStopOnBlockOrError(rl))
+		rbfs = append(rbfs, CondBlockerFromRateLimiter(rl))
 	}
 	return CondChain(rbfs...)
 }
@@ -35,29 +51,29 @@ func CondChain(cf ...CondRequestBlockerFunc) RequestBlockerFunc {
 	return func(c context.Context, r Request) (bool, uint32, error) {
 		minRemaining := uint32(math.MaxUint32)
 		for _, f := range cf {
-			stop, blocked, remaining, err := f(c, r)
-			if err != nil && stop {
-				return blocked, 0, err
+			resp, remaining, err := f(c, r)
+			if err != nil {
+				// We should never continue processing or block if there is an error, to ensure this fails open
+				return false, remaining, err
 			}
 
 			if remaining < minRemaining {
 				minRemaining = remaining
 			}
-			if stop || blocked {
-				return blocked, minRemaining, nil
+			switch resp {
+			case AllowedStop:
+				return false, minRemaining, nil
+			case BlockedStop:
+				return true, minRemaining, nil
 			}
 		}
-
 		return false, minRemaining, nil
 	}
 }
 
-// CondStopOnBlockOrError wraps a RateLimiter Limit call and returns true for stop if the request was blocked or errored out
-func CondStopOnBlockOrError(rl RateLimiter) CondRequestBlockerFunc {
-	return func(c context.Context, r Request) (bool, bool, uint32, error) {
-		blocked, remaining, err := rl.Limit(c, r)
-		stop := (blocked || err != nil)
-
-		return stop, blocked, remaining, err
+// CondBlockerFromRateLimiter wraps a RateLimiter Limit call
+func CondBlockerFromRateLimiter(rl RateLimiter) CondRequestBlockerFunc {
+	return func(c context.Context, r Request) (RequestBlockerResp, uint32, error) {
+		return rl.Limit(c, r)
 	}
 }
