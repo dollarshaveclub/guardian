@@ -26,11 +26,12 @@ import (
 
 var redisAddr = flag.String("redis-addr", "localhost:6379", "redis address")
 var envoyAddr = flag.String("envoy-addr", "localhost:8080", "envoy address")
+var internalCacheAddr = flag.String("internal-cache-addr", "localhost:4343", "internal cache address")
 
-const defaultAsyncCounterTimeout = 300 * time.Millisecond
+const defaultAsyncCounterTimeout = 25 * time.Millisecond
 
 func TestWhitelist(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	CIDR := fmt.Sprintf("%v/32", IP)
 	config := guardianConfig{
@@ -53,7 +54,7 @@ func TestWhitelist(t *testing.T) {
 }
 
 func TestBlacklist(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	CIDR := fmt.Sprintf("%v/32", IP)
 	config := guardianConfig{
@@ -76,7 +77,7 @@ func TestBlacklist(t *testing.T) {
 }
 
 func TestGlobalRateLimit(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
@@ -98,12 +99,11 @@ func TestGlobalRateLimit(t *testing.T) {
 	}
 
 	for i := uint64(0); i < 10; i++ {
-		if len(os.Getenv("SYNC")) == 0 {
-			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-		}
-
 		res := GET(t, IP, "/")
 		res.Body.Close()
+		if len(os.Getenv("SYNC")) == 0 {
+			time.Sleep(defaultAsyncCounterTimeout) // helps prevent races due to asynchronous rate limiting
+		}
 
 		want := 200
 		if i >= config.Spec.Limit.Count {
@@ -117,7 +117,7 @@ func TestGlobalRateLimit(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	guardianConfig := guardianConfig{
 		whitelist:                 []string{},
@@ -143,13 +143,11 @@ func TestRateLimit(t *testing.T) {
 			t.Fatalf("error decoding yaml: %v", err)
 		}
 		for i := uint64(0); i < config.Spec.Limit.Count+5; i++ {
-			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-			}
-
 			res := GET(t, IP, config.Spec.Conditions.Path)
 			res.Body.Close()
-
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevent races due to asynchronous rate limiting
+			}
 			want := 200
 			if i >= config.Spec.Limit.Count && config.Spec.Limit.Enabled {
 				want = 429
@@ -163,7 +161,7 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestJails(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	whitelistedIP := "192.168.1.1"
 
 	guardianConfig := guardianConfig{
@@ -195,13 +193,9 @@ func TestJails(t *testing.T) {
 			t.Fatalf("error decoding yaml: %v", err)
 		}
 		banned := false
-		resetRedis(*redisAddr)
+		resetStores(t, *redisAddr, *internalCacheAddr)
 		applyGuardianConfig(t, *redisAddr, guardianConfig)
 		for i := 0; uint64(i) <= config.Spec.Limit.Count; i++ {
-			if os.Getenv("SYNC") != "" {
-				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-			}
-
 			res := GET(t, "192.168.1.43", config.Spec.Conditions.Path)
 			whitelistedRes := GET(t, whitelistedIP, config.Spec.Conditions.Path)
 			res.Body.Close()
@@ -234,7 +228,7 @@ func TestJails(t *testing.T) {
 }
 
 func TestDeleteRateLimit(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 
 	config := guardianConfig{
 		whitelist:                 []string{},
@@ -257,7 +251,7 @@ func TestDeleteRateLimit(t *testing.T) {
 }
 
 func TestDeleteJail(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 
 	config := guardianConfig{
 		whitelist:                 []string{},
@@ -280,7 +274,7 @@ func TestDeleteJail(t *testing.T) {
 }
 
 func TestRateLimitDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	config := guardianConfig{
 		whitelist:               []string{},
@@ -293,13 +287,11 @@ func TestRateLimitDeprecated(t *testing.T) {
 	applyGuardianConfigDeprecated(t, *redisAddr, config)
 
 	for i := 0; i < 10; i++ {
-		if len(os.Getenv("SYNC")) == 0 {
-			time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-		}
-
 		res := GET(t, IP, "/")
 		res.Body.Close()
-
+		if len(os.Getenv("SYNC")) == 0 {
+			time.Sleep(defaultAsyncCounterTimeout) // helps prevent races due to asynchronous rate limiting
+		}
 		want := 200
 		if i >= config.limitCountDeprecated {
 			want = 429
@@ -312,7 +304,7 @@ func TestRateLimitDeprecated(t *testing.T) {
 }
 
 func TestRouteRateLimitDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	IP := pseudoRandomIPV4Address()
 	config := guardianConfig{
 		whitelist:                          []string{},
@@ -337,13 +329,11 @@ func TestRouteRateLimitDeprecated(t *testing.T) {
 
 	for _, routeRateLimit := range rrlConfig.RouteRateLimits {
 		for i := uint64(0); i < routeRateLimit.Limit.Count+5; i++ {
-			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-			}
-
 			res := GET(t, IP, routeRateLimit.Route)
 			res.Body.Close()
-
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevent races due to asynchronous rate limiting
+			}
 			want := 200
 			if i >= routeRateLimit.Limit.Count && routeRateLimit.Limit.Enabled {
 				want = 429
@@ -357,7 +347,7 @@ func TestRouteRateLimitDeprecated(t *testing.T) {
 }
 
 func TestJailsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	whitelistedIP := "192.168.1.1"
 
 	config := guardianConfig{
@@ -385,18 +375,16 @@ func TestJailsDeprecated(t *testing.T) {
 	// to execute this particular test.
 	for _, j := range jailConfig.Jails {
 		banned := false
-		resetRedis(*redisAddr)
+		resetStores(t, *redisAddr, *internalCacheAddr)
 		applyGuardianConfigDeprecated(t, *redisAddr, config)
 		for i := uint64(0); i < j.Jail.Limit.Count+1; i++ {
-			if len(os.Getenv("SYNC")) == 0 {
-				time.Sleep(defaultAsyncCounterTimeout) // helps prevents races due asynchronous rate limiting
-			}
-
 			res := GET(t, "192.168.1.43", j.Route)
 			whitelistedRes := GET(t, whitelistedIP, j.Route)
 			res.Body.Close()
 			whitelistedRes.Body.Close()
-
+			if len(os.Getenv("SYNC")) == 0 {
+				time.Sleep(defaultAsyncCounterTimeout) // helps prevent races due to asynchronous rate limiting
+			}
 			want := 200
 			if (i >= j.Jail.Limit.Count && j.Jail.Limit.Enabled) || banned {
 				banned = true
@@ -440,7 +428,7 @@ func routeRateLimitsEqual(rrl1, rrl2 []guardian.RouteRateLimitConfigEntryDepreca
 }
 
 func TestSetRouteRateLimitsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	config := guardianConfig{
 		whitelist:                          []string{},
 		blacklist:                          []string{},
@@ -477,7 +465,7 @@ func TestSetRouteRateLimitsDeprecated(t *testing.T) {
 }
 
 func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	config := guardianConfig{
 		whitelist:                          []string{},
 		blacklist:                          []string{},
@@ -506,7 +494,7 @@ func TestRemoveRouteRateLimitsDeprecated(t *testing.T) {
 }
 
 func TestSetJailsDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 	config := guardianConfig{
 		whitelist:                []string{},
 		blacklist:                []string{},
@@ -551,7 +539,7 @@ func TestSetJailsDeprecated(t *testing.T) {
 }
 
 func TestRemoveJailDeprecated(t *testing.T) {
-	resetRedis(*redisAddr)
+	resetStores(t, *redisAddr, *internalCacheAddr)
 
 	config := guardianConfig{
 		whitelist:                []string{},
@@ -607,6 +595,28 @@ type redisDBIndex struct {
 
 var currentRedisDBIndex = redisDBIndex{
 	Index: 0,
+}
+
+func resetStores(t *testing.T, redisAddress string, internalCacheAddress string) {
+	t.Helper()
+	resetCounters(t, internalCacheAddress)
+	resetRedis(redisAddress)
+}
+
+func resetCounters(t *testing.T, address string) {
+	t.Helper()
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	req, _ := http.NewRequest("DELETE", "http://"+address+"/v0/counters", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Logf("error resetting internal cache: %v", err)
+		return
+	}
+	if resp.StatusCode != 200 {
+		t.Logf("error response from internal cache server: %v", resp.StatusCode)
+	}
 }
 
 func resetRedis(redisAddr string) {

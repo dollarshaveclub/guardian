@@ -45,6 +45,7 @@ func main() {
 	synchronous := kingpin.Flag("synchronous", "synchronously enforce ratelimit").Default("false").OverrideDefaultFromEnvar("GUARDIAN_FLAG_SYNCHRONOUS").Bool()
 	initConfig := kingpin.Flag("init", "create missing configuration on startup if needed").Default("false").Envar("GUARDIAN_FLAG_INIT_CONFIG").Bool()
 	prisonerCacheMaxSize := kingpin.Flag("prisoner-cache-max-size", "max size of the cache of prisoner that each Guardian instance maintains").Default("1000").Envar("GUARDIAN_FLAG_PRISONER_CACHE_MAX_SIZE").Uint16()
+	internalCacheServerAddress := kingpin.Flag("internal-cache-server-address", "network address for internal cache server address").Default("").Envar("GUARDIAN_FLAG_INTERNAL_CACHE_SERVER_ADDRESS").String()
 
 	kingpin.Parse()
 
@@ -115,8 +116,19 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		// TODO: Make prune interval configurable through the CLI
 		redisCounter.Run(30*time.Second, stop)
 	}()
+
+	if *internalCacheServerAddress != "" {
+		cacheServer := guardian.NewCacheServer(*internalCacheServerAddress, redisCounter)
+		go func() {
+			csErr := cacheServer.Run(stop)
+			if csErr != nil {
+				logger.WithError(csErr).Errorf("cache server ended with an error")
+			}
+		}()
+	}
 
 	whitelister := guardian.NewIPWhitelister(redisConfStore, logger.WithField("context", "ip-whitelister"), reporter)
 	blacklister := guardian.NewIPBlacklister(redisConfStore, logger.WithField("context", "ip-blacklister"), reporter)

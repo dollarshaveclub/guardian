@@ -107,6 +107,12 @@ func (rs *RedisCounter) pruneCache(olderThan time.Time) {
 	}
 }
 
+func (rs *RedisCounter) removeAll() {
+	rs.cache.Lock()
+	defer rs.cache.Unlock()
+	rs.cache.m = make(map[string]item)
+}
+
 func (rs *RedisCounter) doIncr(context context.Context, key string, incrBy uint, expireIn time.Duration) (uint64, error) {
 	start := time.Now().UTC()
 	var err error

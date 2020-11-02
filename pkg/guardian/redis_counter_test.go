@@ -75,18 +75,96 @@ func TestPrune(t *testing.T) {
 	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
 	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
 
-	time.Sleep(time.Second)
+	// sleep required because newTestRedisCounter returns an async counter
+	time.Sleep(100 * time.Millisecond)
 
+	// we can't defer c.cache.RUnlock() because c.pruneCache() has to acquire the Lock
+	c.cache.RLock()
 	_, ok := c.cache.m[key]
 	if !ok {
+		c.cache.RUnlock()
 		t.Fatalf("key should exist in cache but does not")
 	}
 
+	c.cache.RUnlock()
 	c.pruneCache(time.Now().UTC().Add(2 * time.Second))
+	c.cache.RLock()
+	defer c.cache.RUnlock()
 
 	_, ok = c.cache.m[key]
 	if ok {
 		t.Fatalf("key exists in cache when it should not")
 	}
+}
 
+func TestRemoveAll(t *testing.T) {
+	c, s := newTestRedisCounter(t)
+	defer s.Close()
+
+	key := "test_key"
+	incrBy := uint(5)
+	expire := 60 * time.Second
+	maxBlock := uint64(15)
+
+	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+
+	// sleep required because newTestRedisCounter returns an async counter
+	time.Sleep(100 * time.Millisecond)
+
+	// we can't defer c.cache.RUnlock() because c.removeAll() has to acquire the Lock
+	c.cache.RLock()
+	_, ok := c.cache.m[key]
+	if !ok {
+		c.cache.RUnlock()
+		t.Fatalf("key should exist in cache but does not")
+	}
+
+	c.cache.RUnlock()
+	c.removeAll()
+	c.cache.RLock()
+	defer c.cache.RUnlock()
+
+	_, ok = c.cache.m[key]
+	if ok {
+		t.Fatalf("key exists in cache when it should not")
+	}
+}
+
+func TestRun(t *testing.T) {
+	c, s := newTestRedisCounter(t)
+	defer s.Close()
+
+	stop := make(chan struct{})
+	defer func() { stop <- struct{}{} }()
+	go c.Run(100*time.Millisecond, stop)
+
+	key := "test_key"
+	incrBy := uint(5)
+	expire := 1 * time.Second
+	maxBlock := uint64(15)
+
+	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+	c.Incr(context.Background(), key, incrBy, maxBlock, expire)
+
+	// sleep required because newTestRedisCounter returns an async counter
+	time.Sleep(100 * time.Millisecond)
+
+	// we can't defer c.cache.RUnlock() because c.pruneCache() has to acquire the Lock
+	c.cache.RLock()
+	_, ok := c.cache.m[key]
+	if !ok {
+		c.cache.RUnlock()
+		t.Fatalf("key should exist in cache but does not")
+	}
+
+	c.cache.RUnlock()
+	time.Sleep(2 * time.Second)
+	c.cache.RLock()
+	defer c.cache.RUnlock()
+
+	_, ok = c.cache.m[key]
+	if ok {
+		t.Fatalf("key exists in cache when it should not")
+	}
 }
