@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/dollarshaveclub/guardian
-  tag: "6a5389928765fe33aa37748d4cc633dc16f880e1"
+  tag: "master"
   pullPolicy: Always
 
 deploymentColor: ""
@@ -31,6 +31,11 @@ guardian:
   initConfig: false
   defaultWhitelist: []
   defaultBlacklist: []
+  isE2ETest: false
+  e2e:
+    runE2ETest: false
+    redisAddress: "127.0.0.1:6379"
+    envoyAddress: "127.0.0.1:8080"
 
 imagePullSecrets: []
 nameOverride: ""

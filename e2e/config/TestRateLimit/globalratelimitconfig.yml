@@ -1,9 +1,0 @@
-version: "v0"
-kind: GlobalRateLimit
-name: GlobalRateLimit
-description: GlobalRateLimit
-globalRateLimitSpec:
- limit:
-   count: 100
-   duration: 1s
-   enabled: false

@@ -5,22 +5,26 @@ target_branches:
   - master
 
 application:
-  chart_path: '.helm/charts/guardian'
-  chart_vars_path: '.helm/releases/dqa.yaml'
+  chart_path: .helm/charts/guardian
+  chart_vars_path: .helm/charts/guardian/values.yaml
   image: quay.io/dollarshaveclub/guardian
   value_overrides:
     - "image.pullPolicy=IfNotPresent"
-    - "guardian.redisAddress=redis-master:6379"
-    - "guardian.logLevel=debug"
-    - "guardian.limit=3"
-    - "guardian.limitDuration=10s"
-    - "guardian.initConfig=true"
+    - "guardian.e2e.runE2ETest=true"
+    - "guardian.e2e.redisAddress=redis-master:6379"
+    - "guardian.e2e.envoyAddress=envoy:10000"
+#    - "image.pullPolicy=IfNotPresent"
+#    - "guardian.redisAddress=redis-master:6379"
+#    - "guardian.logLevel=debug"
+#    - "guardian.limit=3"
+#    - "guardian.limitDuration=10s"
+#    - "guardian.initConfig=true"
 
 dependencies:
   direct:
     - name: redis
-      chart_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/redis'
-      chart_vars_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/redis/values.yaml'
+      chart_repo_path: 'helm/charts@7e45e678e39b88590fe877f159516f85f3fd3f38:stable/redis'
+      chart_vars_repo_path: 'helm/charts@7e45e678e39b88590fe877f159516f85f3fd3f38:stable/redis/values.yaml'
       value_overrides:
         - 'usePassword=false'
         - 'cluster.enabled=false'
@@ -28,8 +32,11 @@ dependencies:
         - 'master.persistence.enabled=false'
         - 'slave.persistence.enabled=false'
     - name: envoy
-      chart_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/envoy'
-      chart_vars_repo_path: 'dollarshaveclub/guardian@master:.helm/releases/envoy-dqa.yaml'
+      chart_repo_path: 'helm/charts@7e45e678e39b88590fe877f159516f85f3fd3f38:stable/envoy'
+      chart_vars_repo_path: 'helm/charts@7e45e678e39b88590fe877f159516f85f3fd3f38:stable/envoy/values.yaml'
       value_overrides:
-        - 'image.tag=v1.15.2'
         - 'replicaCount=1'
+#        - 'image.tag=v1.15.2'
+    - name: http-echo
+      chart_path: '.helm/charts/http-echo'
+      chart_vars_path: '.helm/charts/http-echo/values.yaml'
