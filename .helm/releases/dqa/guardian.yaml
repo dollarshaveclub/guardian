@@ -1,0 +1,11 @@
+image:
+  pullPolicy: IfNotPresent
+
+guardian:
+  redisAddress: redis-master:6379
+  logLevel: debug
+  limit: 3
+  limitDuration: 10s
+  initConfig: true
+  e2e:
+    runE2ETest: true

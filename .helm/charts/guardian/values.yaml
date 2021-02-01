@@ -31,7 +31,6 @@ guardian:
   initConfig: false
   defaultWhitelist: []
   defaultBlacklist: []
-  isE2ETest: false
   e2e:
     runE2ETest: false
     redisAddress: "127.0.0.1:6379"

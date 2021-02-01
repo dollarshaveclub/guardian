@@ -1,0 +1,109 @@
+replicaCount: 1
+
+image:
+  tag: v1.15.2
+
+args:
+  - '-c'
+  - '/config/envoy.yaml'
+
+files:
+  envoy.yaml: |-
+    admin:
+      access_log_path: /dev/null
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8082
+    layered_runtime:
+      layers:
+      - name: static_layer_0
+        static_layer:
+          overload:
+            global_downstream_max_connections: 50000
+
+    static_resources:
+      clusters:
+      - name: upstream
+        type: STRICT_DNS
+        connect_timeout: 10s
+        lb_policy: ROUND_ROBIN
+        protocol_selection: USE_DOWNSTREAM_PROTOCOL
+        http2_protocol_options: {}
+        load_assignment:
+          cluster_name: upstream
+          endpoints:
+            - lb_endpoints:
+                - endpoint:
+                    address:
+                      socket_address:
+                        address: http-echo
+                        port_value: 5678
+      - name: guardian
+        type: STRICT_DNS
+        connect_timeout: 10s
+        lb_policy: ROUND_ROBIN
+        protocol_selection: USE_CONFIGURED_PROTOCOL
+        http2_protocol_options: {}
+        load_assignment:
+          cluster_name: guardian
+          endpoints:
+            - lb_endpoints:
+                - endpoint:
+                    address:
+                      socket_address:
+                        address: guardian
+                        port_value: 3000
+      listeners:
+      - address:
+          socket_address:
+            address: 0.0.0.0
+            port_value: 8080
+        filter_chains:
+        - filters:
+          - name: envoy.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager
+              use_remote_address: false
+              xff_num_trusted_hops: 1
+              codec_type: auto
+              stat_prefix: ingress_http
+              http_filters:
+              - name: envoy.filters.http.ratelimit
+                config:
+                  domain: rl
+                  request_type: both # apply to both internal and external requests
+                  failure_mode_deny: false
+                  timeout: { nanos: 50000000 }
+                  stage: 0
+                  rate_limit_service:
+                    grpc_service:
+                      envoy_grpc:
+                        cluster_name: guardian
+              - name: envoy.filters.http.router
+                config: {}
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: local_service
+                  domains:
+                    - "*"
+                  routes:
+                    - match:
+                          prefix: "/"
+                      route:
+                        cluster: upstream
+                        timeout: { seconds: 60 }
+                        rate_limits:
+                          - actions:
+                            - remote_address: {}
+                            - request_headers:
+                                header_name: ":authority"
+                                descriptor_key: "authority"
+                            - request_headers:
+                                header_name: ":method"
+                                descriptor_key: "method"
+                            - request_headers:
+                                header_name: ":path"
+                                descriptor_key: "path"
+
