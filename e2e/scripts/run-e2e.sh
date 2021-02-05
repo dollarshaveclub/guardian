@@ -1,5 +1,12 @@
 #!/bin/bash
 
+for port in 8080 8082 3000 6060 5678 6379; do
+   if lsof -i ":${port}"; then
+      echo "required port ${port} is already in use; terminating"
+      exit 1
+   fi
+done
+
 echo "Starting async guardian..."
 docker-compose -f e2e/docker-compose-async.yml up -d --build --force-recreate > /dev/null 2>&1
 [[ $? -gt 0 ]] && exit 1
