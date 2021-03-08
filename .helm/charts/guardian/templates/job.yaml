@@ -1,0 +1,43 @@
+{{ if .Values.guardian.e2e.runE2ETest }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "guardian.fullname" . }}
+  labels:
+    {{- include "guardian.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "guardian.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      backoffLimit: 1
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/guardian-e2e"]
+          args:
+            - "--redis-addr={{ .Values.guardian.e2e.redisAddress }}"
+            - "--envoy-addr={{ .Values.guardian.e2e.envoyAddress }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{ end }}

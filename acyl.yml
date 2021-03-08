@@ -6,30 +6,18 @@ target_branches:
 
 application:
   chart_path: '.helm/charts/guardian'
-  chart_vars_path: '.helm/releases/dqa.yaml'
+  chart_vars_path: '.helm/releases/dqa/guardian.yaml'
   image: quay.io/dollarshaveclub/guardian
   value_overrides:
-    - "image.pullPolicy=IfNotPresent"
-    - "guardian.redisAddress=redis-master:6379"
-    - "guardian.logLevel=debug"
-    - "guardian.limit=3"
-    - "guardian.limitDuration=10s"
-    - "guardian.initConfig=true"
 
 dependencies:
   direct:
     - name: redis
       chart_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/redis'
-      chart_vars_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/redis/values.yaml'
-      value_overrides:
-        - 'usePassword=false'
-        - 'cluster.enabled=false'
-        - 'persistence.enabled=false'
-        - 'master.persistence.enabled=false'
-        - 'slave.persistence.enabled=false'
+      chart_vars_repo_path: 'dollarshaveclub/guardian:.helm/releases/dqa/redis.yaml'
     - name: envoy
       chart_repo_path: 'helm/charts@3399a078f779668ca892450930c68742b642b860:stable/envoy'
-      chart_vars_repo_path: 'dollarshaveclub/guardian@master:.helm/releases/envoy-dqa.yaml'
-      value_overrides:
-        - 'image.tag=v1.15.2'
-        - 'replicaCount=1'
+      chart_vars_repo_path: 'dollarshaveclub/guardian:.helm/releases/dqa/envoy.yaml'
+    - name: http-echo
+      chart_path: '.helm/charts/http-echo'
+      chart_vars_path: '.helm/charts/http-echo/values.yaml'

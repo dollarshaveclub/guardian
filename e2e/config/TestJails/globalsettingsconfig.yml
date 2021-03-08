@@ -1,6 +1,0 @@
-version: "v0"
-kind: GlobalSettings
-name: GlobalSettings
-description: GlobalSettings
-globalSettingsSpec:
-  reportOnly: false
