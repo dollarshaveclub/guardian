@@ -52,9 +52,6 @@ func (m *Miniredis) cmdZadd(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key, args := args[0], args[1:]
 	var (
@@ -173,9 +170,6 @@ func (m *Miniredis) cmdZcard(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 
@@ -204,9 +198,6 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -253,9 +244,6 @@ func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 	delta, err := strconv.ParseFloat(args[1], 64)
@@ -286,9 +274,6 @@ func (m *Miniredis) cmdZinterstore(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -420,9 +405,6 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 	min, minIncl, err := parseLexrange(args[1])
@@ -469,9 +451,6 @@ func (m *Miniredis) makeCmdZrange(reverse bool) server.Cmd {
 			return
 		}
 		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c) {
 			return
 		}
 
@@ -545,9 +524,6 @@ func (m *Miniredis) makeCmdZrangebylex(reverse bool) server.Cmd {
 			return
 		}
 		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c) {
 			return
 		}
 
@@ -659,9 +635,6 @@ func (m *Miniredis) makeCmdZrangebyscore(reverse bool) server.Cmd {
 			return
 		}
 		if !m.handleAuth(c) {
-			return
-		}
-		if m.checkPubsub(c) {
 			return
 		}
 
@@ -785,9 +758,6 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 		if !m.handleAuth(c) {
 			return
 		}
-		if m.checkPubsub(c) {
-			return
-		}
 
 		key, member := args[0], args[1]
 
@@ -828,9 +798,6 @@ func (m *Miniredis) cmdZrem(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key, members := args[0], args[1:]
 
@@ -865,9 +832,6 @@ func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string)
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -920,9 +884,6 @@ func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 	start, err := strconv.Atoi(args[1])
@@ -968,9 +929,6 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -1019,9 +977,6 @@ func (m *Miniredis) cmdZscore(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -1173,9 +1128,6 @@ func (m *Miniredis) cmdZunionstore(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	destination := args[0]
 	numKeys, err := strconv.Atoi(args[1])
@@ -1302,9 +1254,6 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 

@@ -57,10 +57,6 @@ func (m *Miniredis) cmdBXpop(c *server.Peer, cmd string, args []string, lr leftr
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
-
 	timeoutS := args[len(args)-1]
 	keys := args[:len(args)-1]
 
@@ -125,9 +121,6 @@ func (m *Miniredis) cmdLindex(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key, offsets := args[0], args[1]
 
@@ -172,9 +165,6 @@ func (m *Miniredis) cmdLinsert(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -241,9 +231,6 @@ func (m *Miniredis) cmdLlen(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 
@@ -282,9 +269,6 @@ func (m *Miniredis) cmdXpop(c *server.Peer, cmd string, args []string, lr leftri
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -333,9 +317,6 @@ func (m *Miniredis) cmdXpush(c *server.Peer, cmd string, args []string, lr leftr
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key, args := args[0], args[1:]
 
@@ -379,9 +360,6 @@ func (m *Miniredis) cmdXpushx(c *server.Peer, cmd string, args []string, lr left
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key, args := args[0], args[1:]
 
@@ -418,9 +396,6 @@ func (m *Miniredis) cmdLrange(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -468,9 +443,6 @@ func (m *Miniredis) cmdLrem(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -542,9 +514,6 @@ func (m *Miniredis) cmdLset(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	key := args[0]
 	index, err := strconv.Atoi(args[1])
@@ -590,9 +559,6 @@ func (m *Miniredis) cmdLtrim(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -646,9 +612,6 @@ func (m *Miniredis) cmdRpoplpush(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
 
 	src, dst := args[0], args[1]
 
@@ -677,9 +640,6 @@ func (m *Miniredis) cmdBrpoplpush(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
