@@ -29,7 +29,6 @@ const (
 	msgInvalidKeysNumber  = "ERR Number of keys can't be greater than number of args"
 	msgNegativeKeysNumber = "ERR Number of keys can't be negative"
 	msgFScriptUsage       = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try SCRIPT HELP."
-	msgFPubsubUsage       = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try PUBSUB HELP."
 	msgSingleElementPair  = "ERR INCR option supports a single increment-element pair"
 	msgNoScriptFound      = "NOSCRIPT No matching script. Please use EVAL."
 )

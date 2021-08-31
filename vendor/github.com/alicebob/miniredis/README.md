@@ -18,15 +18,7 @@ There are no dependencies on external binaries, so you can easily integrate it i
 
 ## Changelog
 
-### v2.7.0
-
-SWAPDB
-
-### v2.6.0
-
-PUBSUB (thanks @Al2Klimov)
-
-### v2.5.0
+### 2.5.0
 
 Added ZPopMin and ZPopMax
 
@@ -78,7 +70,7 @@ This should be the change needed to upgrade:
 1.0:
 
     m.Expire() == 4
-
+   
 2.0:
 
     m.TTL() == 4 * time.Second
@@ -95,9 +87,8 @@ Implemented commands:
    - ECHO
    - PING
    - SELECT
-   - SWAPDB
    - QUIT
- - Key
+ - Key 
    - DEL
    - EXISTS
    - EXPIRE
@@ -182,13 +173,6 @@ Implemented commands:
    - RPOPLPUSH
    - RPUSH
    - RPUSHX
- - Pub/Sub (complete)
-   - PSUBSCRIBE
-   - PUBLISH
-   - PUBSUB
-   - PUNSUBSCRIBE
-   - SUBSCRIBE
-   - UNSUBSCRIBE
  - Set keys (complete)
    - SADD
    - SCARD
@@ -314,6 +298,13 @@ Commands which will probably not be implemented:
     - ~~OBJECT~~
     - ~~RESTORE~~
     - ~~WAIT~~
+ - Pub/Sub (all)
+    - ~~PSUBSCRIBE~~
+    - ~~PUBLISH~~
+    - ~~PUBSUB~~
+    - ~~PUNSUBSCRIBE~~
+    - ~~SUBSCRIBE~~
+    - ~~UNSUBSCRIBE~~
  - Scripting
     - ~~SCRIPT DEBUG~~
     - ~~SCRIPT KILL~~
@@ -333,7 +324,7 @@ Commands which will probably not be implemented:
     - ~~SLAVEOF~~
     - ~~SLOWLOG~~
     - ~~SYNC~~
-
+    
 
 ## &c.
 
@@ -341,5 +332,5 @@ Tests are run against Redis 5.0.3. The [./integration](./integration/) subdir
 compares miniredis against a real redis instance.
 
 
-[![Build Status](https://travis-ci.org/alicebob/miniredis.svg?branch=master)](https://travis-ci.org/alicebob/miniredis)
+[![Build Status](https://travis-ci.org/alicebob/miniredis.svg?branch=master)](https://travis-ci.org/alicebob/miniredis) 
 [![GoDoc](https://godoc.org/github.com/alicebob/miniredis?status.svg)](https://godoc.org/github.com/alicebob/miniredis)

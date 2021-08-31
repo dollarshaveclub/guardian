@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	luajson "github.com/alicebob/gopher-json"
-	lua "github.com/yuin/gopher-lua"
+	"github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 
 	"github.com/alicebob/miniredis/server"
@@ -113,10 +113,6 @@ func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if m.checkPubsub(c) {
-		return
-	}
-
 	script, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
@@ -131,9 +127,6 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
@@ -157,9 +150,6 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 		return
 	}
 	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c) {
 		return
 	}
 
